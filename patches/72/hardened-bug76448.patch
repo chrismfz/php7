@@ -1,0 +1,58 @@
+diff -aruN php-7.2.34.orig/ext/pdo_firebird/firebird_driver.c php-7.2.34/ext/pdo_firebird/firebird_driver.c
+--- php-7.2.34.orig/ext/pdo_firebird/firebird_driver.c	2020-09-30 01:15:54.000000000 -0400
++++ php-7.2.34/ext/pdo_firebird/firebird_driver.c	2021-07-16 06:08:17.869203818 -0400
+@@ -500,14 +500,16 @@
+ }
+ /* }}} */
+ 
++#define INFO_BUF_LEN 512
++
+ /* callback to used to report database server info */
+ static void firebird_info_cb(void *arg, char const *s) /* {{{ */
+ {
+ 	if (arg) {
+ 		if (*(char*)arg) { /* second call */
+-			strcat(arg, " ");
++			strlcat(arg, " ", INFO_BUF_LEN);
+ 		}
+-		strcat(arg, s);
++		strlcat(arg, s, INFO_BUF_LEN);
+ 	}
+ }
+ /* }}} */
+@@ -518,7 +520,7 @@
+ 	pdo_firebird_db_handle *H = (pdo_firebird_db_handle *)dbh->driver_data;
+ 
+ 	switch (attr) {
+-		char tmp[512];
++		char tmp[INFO_BUF_LEN];
+ 
+ 		case PDO_ATTR_AUTOCOMMIT:
+ 			ZVAL_LONG(val,dbh->auto_commit);
+diff -aruN php-7.2.34.orig/ext/pdo_firebird/tests/bug_76448.phpt php-7.2.34/ext/pdo_firebird/tests/bug_76448.phpt
+--- php-7.2.34.orig/ext/pdo_firebird/tests/bug_76448.phpt	1969-12-31 19:00:00.000000000 -0500
++++ php-7.2.34/ext/pdo_firebird/tests/bug_76448.phpt	2021-07-16 06:09:10.678237886 -0400
+@@ -0,0 +1,23 @@
++--TEST--
++Bug #76448 (Stack buffer overflow in firebird_info_cb)
++--SKIPIF--
++<?php
++if (!extension_loaded('pdo_firebird')) die("skip podo_firebird extension not available");
++if (!extension_loaded('sockets')) die("skip sockets extension not available");
++?>
++--FILE--
++<?php
++require_once "payload_server.inc";
++
++$address = run_server(__DIR__ . "/bug_76448.data");
++
++// no need to change the credentials; we're running against a falke server
++$dsn = "firebird:dbname=inet://$address/test";
++$username = 'SYSDBA';
++$password = 'masterkey';
++
++$dbh = new PDO($dsn, $username, $password, [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION]);
++var_dump($dbh->getAttribute(PDO::ATTR_SERVER_INFO));
++?>
++--EXPECT--
++bool(false)

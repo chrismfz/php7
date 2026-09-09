@@ -1,0 +1,83 @@
+commit dfd05da97f72628c5124bfb54976d2c3a02dba82
+Author: Nikita Popov <nikita.ppv@gmail.com>
+Date:   Fri Jul 23 11:17:29 2021 +0200
+
+    Fix bug #66719
+    
+    While parent:: should inherit the called scope, it should only do
+    so if it is compatible. If there is no called scope, or it is not
+    a subtype of the scope, we should fall back to the scope.
+
+diff --git a/Zend/tests/bug66719.phpt b/Zend/tests/bug66719.phpt
+new file mode 100644
+index 0000000000..70785b4a78
+--- /dev/null
++++ b/Zend/tests/bug66719.phpt
+@@ -0,0 +1,43 @@
++--TEST--
++Bug #66719: Weird behaviour when using get_called_class() with call_user_func()
++--FILE--
++<?php
++
++class A
++{
++    public static function who()
++    {
++        var_dump(get_called_class());
++    }
++}
++class B extends A
++{
++    public static function who()
++    {
++        parent::who();
++    }
++}
++
++class C
++{
++    public static function test() {
++        B::who();
++        call_user_func(array(A::class, 'who'));
++        call_user_func(array(B::class, 'parent::who'));
++    }
++}
++
++B::who();
++call_user_func(array(A::class, 'who'));
++call_user_func(array(B::class, 'parent::who'));
++
++C::test();
++
++?>
++--EXPECT--
++string(1) "B"
++string(1) "A"
++string(1) "A"
++string(1) "B"
++string(1) "A"
++string(1) "A"
+diff --git a/Zend/zend_API.c b/Zend/zend_API.c
+index de03cf5656..ac1f09b230 100644
+--- a/Zend/zend_API.c
++++ b/Zend/zend_API.c
+@@ -2922,6 +2922,9 @@ static int zend_is_callable_check_class(zend_string *name, zend_class_entry *sco
+ 			if (error) *error = estrdup("cannot access self:: when no class scope is active");
+ 		} else {
+ 			fcc->called_scope = zend_get_called_scope(EG(current_execute_data));
++			if (!fcc->called_scope || !instanceof_function(fcc->called_scope, scope)) {
++				fcc->called_scope = scope;
++			}
+ 			fcc->calling_scope = scope;
+ 			if (!fcc->object) {
+ 				fcc->object = zend_get_this_object(EG(current_execute_data));
+@@ -2935,6 +2938,9 @@ static int zend_is_callable_check_class(zend_string *name, zend_class_entry *sco
+ 			if (error) *error = estrdup("cannot access parent:: when current class scope has no parent");
+ 		} else {
+ 			fcc->called_scope = zend_get_called_scope(EG(current_execute_data));
++			if (!fcc->called_scope || !instanceof_function(fcc->called_scope, scope->parent)) {
++				fcc->called_scope = scope->parent;
++			}
+ 			fcc->calling_scope = scope->parent;
+ 			if (!fcc->object) {
+ 				fcc->object = zend_get_this_object(EG(current_execute_data));

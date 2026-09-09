@@ -1,0 +1,6 @@
+# Force-kept patches classify() would otherwise skip but this build needs.
+
+# OpenSSL 3.0.x build compat — same patch CloudLinux ships for 7.3 (identical
+# sha256), needed because we build against a private OpenSSL 3.5. classify() files
+# it as build/packaging; without it ext/openssl won't compile on OpenSSL 3.
+php-7.3.33-fix-for-openssl-3.0.x.patch

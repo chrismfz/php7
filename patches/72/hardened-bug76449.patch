@@ -1,0 +1,48 @@
+diff -aruN php-7.2.34.orig/ext/pdo_firebird/firebird_driver.c php-7.2.34/ext/pdo_firebird/firebird_driver.c
+--- php-7.2.34.orig/ext/pdo_firebird/firebird_driver.c	2020-09-30 01:15:54.000000000 -0400
++++ php-7.2.34/ext/pdo_firebird/firebird_driver.c	2021-07-16 06:15:38.500831935 -0400
+@@ -206,8 +206,17 @@
+ 	if (result[0] == isc_info_sql_records) {
+ 		unsigned i = 3, result_size = isc_vax_integer(&result[1],2);
+ 
++		if (result_size > sizeof(result)) {
++			ret = -1;
++			goto free_statement;
++		}
+ 		while (result[i] != isc_info_end && i < result_size) {
+ 			short len = (short)isc_vax_integer(&result[i+1],2);
++			/* bail out on bad len */
++			if (len != 1 && len != 2 && len != 4) {
++				ret = -1;
++				goto free_statement;
++			}
+ 			if (result[i] != isc_info_req_select_count) {
+ 				ret += isc_vax_integer(&result[i+3],len);
+ 			}
+diff -aruN php-7.2.34.orig/ext/pdo_firebird/tests/bug_76449.phpt php-7.2.34/ext/pdo_firebird/tests/bug_76449.phpt
+--- php-7.2.34.orig/ext/pdo_firebird/tests/bug_76449.phpt	1969-12-31 19:00:00.000000000 -0500
++++ php-7.2.34/ext/pdo_firebird/tests/bug_76449.phpt	2021-07-16 06:16:33.621911272 -0400
+@@ -0,0 +1,23 @@
++--TEST--
++Bug #76449 (SIGSEGV in firebird_handle_doer)
++--SKIPIF--
++<?php
++if (!extension_loaded('pdo_firebird')) die("skip pdo_firebird extension not available");
++if (!extension_loaded('sockets')) die("skip sockets extension not available");
++?>
++--FILE--
++<?php
++require_once "payload_server.inc";
++
++$address = run_server(__DIR__ . "/bug_76449.data");
++
++// no need to change the credentials; we're running against a fake server
++$dsn = "firebird:dbname=inet://$address/test";
++$username = 'SYSDBA';
++$password = 'masterkey';
++
++$dbh = new PDO($dsn, $username, $password, [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION]);
++var_dump($dbh->exec("INSERT INTO test VALUES ('hihi2', 'xxxxx')"));
++?>
++--EXPECT--
++bool(false)

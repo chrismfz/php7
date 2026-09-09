@@ -1,0 +1,109 @@
+commit 75cb678206e385736deb75e5cf8a2f83e88a4335
+Author: Christoph M. Becker <cmbecker69@gmx.de>
+Date:   Wed Mar 24 16:26:52 2021 +0100
+
+    Fix #69668: SOAP special XML characters in namespace URIs not encoded
+    
+    `xmlNewNs()` does not XML encode the passed `href`, so we need to do
+    that manually.
+    
+    Closes GH-6804.
+    
+    Signed-off-by: Christoph M. Becker <cmbecker69@gmx.de>
+
+diff --git a/ext/soap/php_encoding.c b/ext/soap/php_encoding.c
+index c44fec3ab0..e0cf63dd1d 100644
+--- a/ext/soap/php_encoding.c
++++ b/ext/soap/php_encoding.c
+@@ -3381,6 +3381,7 @@ xmlNsPtr encode_add_ns(xmlNodePtr node, const char* ns)
+ 		} else {
+ 			smart_str prefix = {0};
+ 			int num = ++SOAP_GLOBAL(cur_uniq_ns);
++			xmlChar *enc_ns;
+ 
+ 			while (1) {
+ 				smart_str_appendl(&prefix, "ns", 2);
+@@ -3394,7 +3395,9 @@ xmlNsPtr encode_add_ns(xmlNodePtr node, const char* ns)
+ 				num = ++SOAP_GLOBAL(cur_uniq_ns);
+ 			}
+ 
+-			xmlns = xmlNewNs(node->doc->children, BAD_CAST(ns), BAD_CAST(prefix.s ? ZSTR_VAL(prefix.s) : ""));
++			enc_ns = xmlEncodeSpecialChars(node->doc, BAD_CAST(ns));
++			xmlns = xmlNewNs(node->doc->children, enc_ns, BAD_CAST(prefix.s ? ZSTR_VAL(prefix.s) : ""));
++			xmlFree(enc_ns);
+ 			smart_str_free(&prefix);
+ 		}
+ 	}
+diff --git a/ext/soap/tests/bug69668.phpt b/ext/soap/tests/bug69668.phpt
+new file mode 100644
+index 0000000000..59b3aa648f
+--- /dev/null
++++ b/ext/soap/tests/bug69668.phpt
+@@ -0,0 +1,26 @@
++--TEST--
++Bug #69668 (SOAP: special XML characters in namespace URIs not encoded)
++--SKIPIF--
++<?php
++require_once('skipif.inc');
++?>
++--FILE--
++<?php
++class MySoapClient extends SoapClient {
++    public function __doRequest($request, $location, $action, $version, $one_way = 0) {
++        echo $request, PHP_EOL;
++        return '';
++    }
++}
++
++$client = new MySoapClient(__DIR__ . '/bug69668.wsdl', [
++    'trace'      => true,
++    'exceptions' => true,
++    'cache_wsdl' => WSDL_CACHE_NONE,
++]);
++
++$client->test();
++?>
++--EXPECT--
++<?xml version="1.0" encoding="UTF-8"?>
++<SOAP-ENV:Envelope xmlns:SOAP-ENV="http://schemas.xmlsoap.org/soap/envelope/" xmlns:ns1="http://localhost/69668.php?a=a&amp;b=b" xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:SOAP-ENC="http://schemas.xmlsoap.org/soap/encoding/" SOAP-ENV:encodingStyle="http://schemas.xmlsoap.org/soap/encoding/"><SOAP-ENV:Body><ns1:test/></SOAP-ENV:Body></SOAP-ENV:Envelope>
+diff --git a/ext/soap/tests/bug69668.wsdl b/ext/soap/tests/bug69668.wsdl
+new file mode 100644
+index 0000000000..675db1e3e4
+--- /dev/null
++++ b/ext/soap/tests/bug69668.wsdl
+@@ -0,0 +1,35 @@
++<?xml version="1.0" encoding="UTF-8"?>
++<definitions xmlns="http://schemas.xmlsoap.org/wsdl/" xmlns:wsdl="http://schemas.xmlsoap.org/wsdl/" xmlns:tns="http://localhost/69668.php?a=a&amp;b=b" xmlns:soap="http://schemas.xmlsoap.org/wsdl/soap/" xmlns:xsd="http://www.w3.org/2001/XMLSchema"
++    xmlns:soap-enc="http://schemas.xmlsoap.org/soap/encoding/" xmlns:soap12="http://schemas.xmlsoap.org/wsdl/soap12/" name="TestService" targetNamespace="http://localhost/69668.php?a=a&amp;b=b">
++    <types>
++        <xsd:schema targetNamespace="http://localhost/69668.php?a=a&amp;b=b" />
++    </types>
++    <portType name="TestServicePort">
++        <operation name="test">
++            <documentation>test</documentation>
++            <input message="tns:testIn" />
++            <output message="tns:testOut" />
++        </operation>
++    </portType>
++    <binding name="TestServiceBinding" type="tns:TestServicePort">
++        <soap:binding style="rpc" transport="http://schemas.xmlsoap.org/soap/http" />
++        <operation name="test">
++            <soap:operation soapAction="http://localhost/69668.php?a=a&amp;b=b#test" />
++            <input>
++                <soap:body use="encoded" encodingStyle="http://schemas.xmlsoap.org/soap/encoding/" namespace="http://localhost/69668.php?a=a&amp;b=b" />
++            </input>
++            <output>
++                <soap:body use="encoded" encodingStyle="http://schemas.xmlsoap.org/soap/encoding/" namespace="http://localhost/69668.php?a=a&amp;b=b" />
++            </output>
++        </operation>
++    </binding>
++    <service name="TestServiceService">
++        <port name="TestServicePort" binding="tns:TestServiceBinding">
++            <soap:address location="http://localhost/69668.php?a=a&amp;b=b" />
++        </port>
++    </service>
++    <message name="testIn" />
++    <message name="testOut">
++        <part name="return" type="xsd:string" />
++    </message>
++</definitions>
