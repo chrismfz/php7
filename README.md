@@ -89,10 +89,17 @@ git diff patches/73/
 
 | minor | default release | patches | notes |
 |------|-----------------|---------|-------|
-| 7.3  | 7.3.33          | (pending) | first target — pristine build brought up first |
+| 7.3  | 7.3.33          | ✅ 76 series + 1 local (35 CVEs) | **built & verified** (OpenSSL 3.5.7, ionCube, OPcache); sha256 pinned |
 | 7.2  | 7.2.34          | (pending) | no `ext/mcrypt` |
 | 7.1  | 7.1.33          | (pending) | `ext/mcrypt` present (deprecated) |
 | 7.0  | 7.0.33          | (pending) | `ext/mcrypt` present |
+
+**7.3 source:** from `ea-php73-php-7.3.33-15.el8.cloudlinux.16`. Of 110 applied
+CloudLinux patches, 76 are kept in the series and 1 (CVE-2017-9118) is rebased in
+`patches-local/73/` for the pristine 7.3.33 base; the rest are CloudLinux/LiteSpeed/
+EA4 runtime + build-packaging glue. CloudLinux's `php-7.3.33-fix-for-openssl-3.0.x.patch`
+is force-kept (`patches-local/73/include`) — it is what lets 7.3 build against the
+private OpenSSL 3.5. **Every CVE in the series is covered.**
 
 ## Licence
 

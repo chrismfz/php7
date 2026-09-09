@@ -64,7 +64,7 @@ declare -A PHP_SHA256=(
   [7.0.33]=""
   [7.1.33]=""
   [7.2.34]=""
-  [7.3.33]=""
+  [7.3.33]="166eaccde933381da9516a2b70ad0f447d7cec4b603d07b9a916032b215b90cc"
 )
 
 NGM_ROOT="${NGM_ROOT:-/opt/ngm/php}"
