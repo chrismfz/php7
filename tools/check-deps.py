@@ -19,9 +19,20 @@ Stdlib only; reads the canonical openssl.org/source index + .sha256 over TLS —
 the same host build.sh already downloads from, and it lists only the latest patch
 per branch, so scraping it IS "the latest 3.5 LTS".
 """
-import argparse, os, re, sys, urllib.request
+import argparse, glob, os, re, sys, urllib.request
 
-BUILD_SH = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "build.sh")
+
+def _default_build_sh():
+    """The repo's build script: build.sh (php7) or build-php<NN>.sh (php53/php56)."""
+    root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    cand = os.path.join(root, "build.sh")
+    if os.path.exists(cand):
+        return cand
+    hits = sorted(glob.glob(os.path.join(root, "build-php*.sh")))
+    return hits[0] if hits else cand
+
+
+BUILD_SH = _default_build_sh()
 
 
 SOURCE_INDEX = "https://www.openssl.org/source/"
