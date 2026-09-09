@@ -1,0 +1,68 @@
+commit dc7aa22b18b710aaa837c9466e9a77241f909c8a
+Author: Albert Casademont <albertcasademont@gmail.com>
+Date:   Tue Jul 23 14:03:06 2019 +0200
+
+    Fix bug #78326
+    
+    Similar to what fread() does, truncate the stream_get_contents()
+    result if the original buffer was way too large.
+
+diff --git a/ext/standard/tests/streams/bug78326.phpt b/ext/standard/tests/streams/bug78326.phpt
+new file mode 100644
+index 0000000000..ca27b05f62
+--- /dev/null
++++ b/ext/standard/tests/streams/bug78326.phpt
+@@ -0,0 +1,18 @@
++--TEST--
++memory allocation on stream_get_contents()
++--INI--
++memory_limit=32M
++--FILE--
++<?php
++$f = tmpfile();
++fwrite($f, '.');
++
++$chunks = array();
++for ($i = 0; $i < 1000; ++$i) {
++    rewind($f);
++    $chunks[] = stream_get_contents($f, 1000000);
++}
++var_dump(count($chunks));
++?>
++--EXPECT--
++int(1000)
+diff --git a/ext/standard/tests/streams/bug78326_1.phpt b/ext/standard/tests/streams/bug78326_1.phpt
+new file mode 100644
+index 0000000000..8e3489db53
+--- /dev/null
++++ b/ext/standard/tests/streams/bug78326_1.phpt
+@@ -0,0 +1,10 @@
++--TEST--
++proper string length on stream_get_contents()
++--FILE--
++<?php
++$f = fopen('php://memory', 'rw');
++fwrite($f, str_repeat('X', 1000));
++fseek($f, 0);
++var_dump(strlen(stream_get_contents($f, 1024)));
++--EXPECT--
++int(1000)
+diff --git a/main/streams/streams.c b/main/streams/streams.c
+index 9daae57433..399ec29810 100644
+--- a/main/streams/streams.c
++++ b/main/streams/streams.c
+@@ -1418,8 +1418,13 @@ PHPAPI zend_string *_php_stream_copy_to_mem(php_stream *src, size_t maxlen, int
+ 			ptr += ret;
+ 		}
+ 		if (len) {
+-			*ptr = '\0';
+ 			ZSTR_LEN(result) = len;
++			ZSTR_VAL(result)[len] = '\0';
++
++			/* Only truncate if the savings are large enough */
++			if (len < maxlen / 2) {
++				result = zend_string_truncate(result, len, persistent);
++			}
+ 		} else {
+ 			zend_string_free(result);
+ 			result = NULL;

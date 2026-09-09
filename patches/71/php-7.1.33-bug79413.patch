@@ -1,0 +1,22 @@
+diff --git a/ext/session/session.c b/ext/session/session.c
+index 8d60ac2..995afb9 100644
+--- a/ext/session/session.c
++++ b/ext/session/session.c
+@@ -1987,7 +1987,7 @@ static PHP_FUNCTION(session_regenerate_id)
+ 		RETURN_FALSE;
+ 	}
+ 	if (PS(use_strict_mode) && PS(mod)->s_validate_sid &&
+-		PS(mod)->s_validate_sid(&PS(mod_data), PS(id)) == FAILURE) {
++		PS(mod)->s_validate_sid(&PS(mod_data), PS(id)) == SUCCESS) {
+ 		zend_string_release(PS(id));
+ 		PS(id) = PS(mod)->s_create_sid(&PS(mod_data));
+ 		if (!PS(id)) {
+@@ -2047,7 +2047,7 @@ static PHP_FUNCTION(session_create_id)
+ 				break;
+ 			} else {
+ 				/* Detect collision and retry */
+-				if (PS(mod)->s_validate_sid(&PS(mod_data), new_id) == FAILURE) {
++				if (PS(mod)->s_validate_sid(&PS(mod_data), new_id) == SUCCESS) {
+ 					zend_string_release(new_id);
+ 					continue;
+ 				}

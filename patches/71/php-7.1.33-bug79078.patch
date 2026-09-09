@@ -1,0 +1,61 @@
+commit 0dda4a844e63ccbcff1053fff65649dab0fd348f
+Author: Christoph M. Becker <cmbecker69@gmx.de>
+Date:   Wed Jan 8 11:52:24 2020 +0100
+
+    Fix #79078: Hypothetical use-after-free in curl_multi_add_handle()
+    
+    To avoid this, we have to verify the handlers already in
+    `curl_multi_add_handle()`, not only in `curl_multi_exec()`.
+
+diff --git a/ext/curl/multi.c b/ext/curl/multi.c
+index d10a03f741..af31e28adf 100644
+--- a/ext/curl/multi.c
++++ b/ext/curl/multi.c
+@@ -92,6 +92,8 @@ PHP_FUNCTION(curl_multi_add_handle)
+ 		RETURN_FALSE;
+ 	}
+ 
++	_php_curl_verify_handlers(ch, 1);
++
+ 	_php_curl_cleanup_handle(ch);
+ 
+ 	GC_ADDREF(Z_RES_P(z_ch));
+diff --git a/ext/curl/tests/bug48203_multi.phpt b/ext/curl/tests/bug48203_multi.phpt
+index 5f9e2ba6b2..3834b5bcd5 100644
+--- a/ext/curl/tests/bug48203_multi.phpt
++++ b/ext/curl/tests/bug48203_multi.phpt
+@@ -67,25 +67,25 @@ foreach($options_to_check as $option) {
+ --CLEAN--
+ <?php @unlink(dirname(__FILE__) . '/bug48203.tmp'); ?>
+ --EXPECTF--
+-Warning: curl_multi_exec(): CURLOPT_STDERR resource has gone away, resetting to stderr in %s on line %d
+-
+-Warning: curl_multi_exec(): CURLOPT_STDERR resource has gone away, resetting to stderr in %s on line %d
++Warning: curl_multi_add_handle(): CURLOPT_STDERR resource has gone away, resetting to stderr in %s on line %d
++%A
++Warning: curl_multi_add_handle(): CURLOPT_STDERR resource has gone away, resetting to stderr in %s on line %d
+ %A
+ Ok for CURLOPT_STDERR
+ 
+-Warning: curl_multi_exec(): CURLOPT_WRITEHEADER resource has gone away, resetting to default in %s on line %d
++Warning: curl_multi_add_handle(): CURLOPT_WRITEHEADER resource has gone away, resetting to default in %s on line %d
+ 
+-Warning: curl_multi_exec(): CURLOPT_WRITEHEADER resource has gone away, resetting to default in %s on line %d
++Warning: curl_multi_add_handle(): CURLOPT_WRITEHEADER resource has gone away, resetting to default in %s on line %d
+ Ok for CURLOPT_WRITEHEADER
+ 
+-Warning: curl_multi_exec(): CURLOPT_FILE resource has gone away, resetting to default in %s on line %d
++Warning: curl_multi_add_handle(): CURLOPT_FILE resource has gone away, resetting to default in %s on line %d
+ 
+-Warning: curl_multi_exec(): CURLOPT_FILE resource has gone away, resetting to default in %s on line %d
++Warning: curl_multi_add_handle(): CURLOPT_FILE resource has gone away, resetting to default in %s on line %d
+ Hello World!
+ Hello World!Hello World!
+ Hello World!Ok for CURLOPT_FILE
+ 
+-Warning: curl_multi_exec(): CURLOPT_INFILE resource has gone away, resetting to default in %s on line %d
++Warning: curl_multi_add_handle(): CURLOPT_INFILE resource has gone away, resetting to default in %s on line %d
+ 
+-Warning: curl_multi_exec(): CURLOPT_INFILE resource has gone away, resetting to default in %s on line %d
++Warning: curl_multi_add_handle(): CURLOPT_INFILE resource has gone away, resetting to default in %s on line %d
+ Ok for CURLOPT_INFILE

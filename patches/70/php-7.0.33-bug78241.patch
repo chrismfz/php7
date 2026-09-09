@@ -1,0 +1,62 @@
+commit 44c8b7414ce96038017edc2fd827f8250669a62a
+Author: Christoph M. Becker <cmbecker69@gmx.de>
+Date:   Wed Jul 3 09:59:17 2019 +0200
+
+    Fix #78241: touch() does not handle dates after 2038 in PHP 64-bit
+    
+    `time_t` defaults to `_time64` (which is 64bit signed) even on x86, but
+    `Int32x32To64()` truncates it to signed 32bit.  We replace the macro
+    with the "manual" calculation.
+
+diff --git a/TSRM/tsrm_win32.c b/TSRM/tsrm_win32.c
+index ca121de057..34b0676461 100644
+--- a/TSRM/tsrm_win32.c
++++ b/TSRM/tsrm_win32.c
+@@ -804,7 +804,7 @@ static zend_always_inline void UnixTimeToFileTime(time_t t, LPFILETIME pft) /* {
+ 	// Note that LONGLONG is a 64-bit value
+ 	LONGLONG ll;
+ 
+-	ll = Int32x32To64(t, 10000000) + 116444736000000000;
++	ll = t * 10000000 + 116444736000000000;
+ 	pft->dwLowDateTime = (DWORD)ll;
+ 	pft->dwHighDateTime = ll >> 32;
+ }
+diff --git a/ext/standard/tests/file/bug78241.phpt b/ext/standard/tests/file/bug78241.phpt
+new file mode 100644
+index 0000000000..99fed8a5a3
+--- /dev/null
++++ b/ext/standard/tests/file/bug78241.phpt
+@@ -0,0 +1,33 @@
++--TEST--
++Bug #78241 (touch() does not handle dates after 2038 in PHP 64-bit)
++--SKIPIF--
++<?php
++if (substr(PHP_OS, 0, 3) != 'WIN') die('skip this test is for Windows platforms only');
++if (PHP_INT_SIZE != 8) die('skip this test is for 64bit platforms only');
++?>
++--INI--
++date.timezone=UTC
++--FILE--
++<?php
++$filename = __DIR__ . '/bug78241.txt';
++for ($i = 2037; $i <= 2040; $i++) {
++  $t = mktime(1, 1 , 1, 1, 1, $i);
++  echo 'Date: '.date('D, d M Y H:i:s', $t), PHP_EOL;
++  touch($filename, $t);
++  clearstatcache(true, $filename);
++  $file = filemtime($filename);
++  echo 'File: '.date('D, d M Y H:i:s', $file), PHP_EOL, PHP_EOL;
++}
++?>
++--EXPECT--
++Date: Thu, 01 Jan 2037 01:01:01
++File: Thu, 01 Jan 2037 01:01:01
++
++Date: Fri, 01 Jan 2038 01:01:01
++File: Fri, 01 Jan 2038 01:01:01
++
++Date: Sat, 01 Jan 2039 01:01:01
++File: Sat, 01 Jan 2039 01:01:01
++
++Date: Sun, 01 Jan 2040 01:01:01
++File: Sun, 01 Jan 2040 01:01:01

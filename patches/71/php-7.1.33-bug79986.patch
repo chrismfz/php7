@@ -1,0 +1,13 @@
+diff --git a/ext/standard/string.c b/ext/standard/string.c
+index 922d4fc..47b827e 100644
+--- a/ext/standard/string.c
++++ b/ext/standard/string.c
+@@ -3066,7 +3066,7 @@ static zend_string* php_char_to_str_ex(zend_string *str, char from, char *to, si
+ {
+ 	zend_string *result;
+ 	size_t char_count = 0;
+-	char lc_from = 0;
++	int lc_from = 0;
+ 	char *source, *target, *source_end= ZSTR_VAL(str) + ZSTR_LEN(str);
+ 
+ 	if (case_sensitivity) {

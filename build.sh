@@ -63,7 +63,7 @@ case "$PHP_MINOR" in 7.0|7.1) USE_MCRYPT=1 ;; esac
 declare -A PHP_SHA256=(
   [7.0.33]=""
   [7.1.33]=""
-  [7.2.34]=""
+  [7.2.34]="409e11bc6a2c18707dfc44bc61c820ddfd81e17481470f3405ee7822d8379903"
   [7.3.33]="166eaccde933381da9516a2b70ad0f447d7cec4b603d07b9a916032b215b90cc"
 )
 

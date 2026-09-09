@@ -1,0 +1,17 @@
+diff --git a/Zend/zend_compile.c b/Zend/zend_compile.c
+index b23e9f5..a0c7224 100644
+--- a/Zend/zend_compile.c
++++ b/Zend/zend_compile.c
+@@ -2757,7 +2757,11 @@ uint32_t zend_compile_args(zend_ast *ast, zend_function *fbc) /* {{{ */
+ 				zend_compile_var(&arg_node, arg, BP_VAR_R);
+ 				if (arg_node.op_type & (IS_CONST|IS_TMP_VAR)) {
+ 					/* Function call was converted into builtin instruction */
+-					opcode = ZEND_SEND_VAL;
++					if (!fbc || ARG_MUST_BE_SENT_BY_REF(fbc, arg_num)) {
++						opcode = ZEND_SEND_VAL_EX;
++					} else {
++						opcode = ZEND_SEND_VAL;
++					}
+ 				} else {
+ 					opcode = ZEND_SEND_VAR_NO_REF;
+ 					flags |= ZEND_ARG_SEND_FUNCTION;

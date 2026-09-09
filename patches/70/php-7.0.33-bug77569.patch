@@ -1,0 +1,41 @@
+commit cec8b24c848bab8562c82422f3692c193f0afcdb
+Author: Christoph M. Becker <cmbecker69@gmx.de>
+Date:   Thu Feb 13 15:13:26 2020 +0100
+
+    Fix #77569: Write Acess Violation in DomImplementation
+    
+    We must not assume that the zval IS_STRING.
+
+diff --git a/ext/dom/document.c b/ext/dom/document.c
+index c9e1802f78..11ef4aa818 100644
+--- a/ext/dom/document.c
++++ b/ext/dom/document.c
+@@ -341,7 +341,7 @@ int dom_document_encoding_write(dom_object *obj, zval *newval)
+ 
+ 	str = zval_get_string(newval);
+ 
+-	handler = xmlFindCharEncodingHandler(Z_STRVAL_P(newval));
++	handler = xmlFindCharEncodingHandler(ZSTR_VAL(str));
+ 
+     if (handler != NULL) {
+ 		xmlCharEncCloseFunc(handler);
+diff --git a/ext/dom/tests/bug77569.phpt b/ext/dom/tests/bug77569.phpt
+new file mode 100644
+index 0000000000..f0f3566708
+--- /dev/null
++++ b/ext/dom/tests/bug77569.phpt
+@@ -0,0 +1,14 @@
++--TEST--
++Bug #77569 (Write Acess Violation in DomImplementation)
++--SKIPIF--
++<?php
++if (!extension_loaded('dom')) die('skip dom extension not available');
++?>
++--FILE--
++<?php
++$imp = new DOMImplementation;
++$dom = $imp->createDocument("", "");
++$dom->encoding = null;
++?>
++--EXPECTF--
++Warning: main(): Invalid Document Encoding in %s on line %d

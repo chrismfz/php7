@@ -1,0 +1,44 @@
+commit d1b1866a3a035b946e50b17eeefd19add81c7eab
+Author: Xinchen Hui <laruence@gmail.com>
+Date:   Wed Jun 27 13:05:11 2018 +0800
+
+    Fixed bug #76534 (PHP hangs on 'illegal string offset on string references with an error handler)
+
+diff --git a/Zend/tests/bug76534.phpt b/Zend/tests/bug76534.phpt
+new file mode 100644
+index 0000000..956a29b
+--- /dev/null
++++ b/Zend/tests/bug76534.phpt
+@@ -0,0 +1,17 @@
++--TEST--
++Bug #76534 (PHP hangs on 'illegal string offset on string references with an error handler)
++--FILE--
++<?php
++set_error_handler(function ($severity, $message, $file, $line) {
++	throw new \Exception($message);
++});
++
++$x = "foo";
++$y = &$x["bar"];
++?>
++--EXPECTF--
++Fatal error: Uncaught Exception: Illegal string offset 'bar' in %sbug76534.php:%d
++Stack trace:
++#0 %sbug76534.php(%d): {closure}(2, 'Illegal string ...', '%s', %d, Array)
++#1 {main}
++  thrown in %sbug76534.php on line %d
+diff --git a/Zend/zend_execute.c b/Zend/zend_execute.c
+index 968618a..f88fac6 100644
+--- a/Zend/zend_execute.c
++++ b/Zend/zend_execute.c
+@@ -1700,7 +1700,9 @@ convert_to_array:
+ 			ZVAL_INDIRECT(result, &EG(error_zval));
+ 		} else {
+ 			zend_check_string_offset(dim, type);
+-			ZVAL_INDIRECT(result, NULL); /* wrong string offset */
++			if (EXPECTED(EG(exception) == NULL)) {
++				ZVAL_INDIRECT(result, NULL); /* wrong string offset */
++			}
+ 		}
+ 	} else if (EXPECTED(Z_TYPE_P(container) == IS_OBJECT)) {
+ 		if (!Z_OBJ_HT_P(container)->read_dimension) {

@@ -1,0 +1,71 @@
+From dc334fa4fdd787ab3875f6bd9e3af1b8d4061b3e Mon Sep 17 00:00:00 2001
+From: "Christoph M. Becker" <cmbecker69@gmx.de>
+Date: Fri, 19 Mar 2021 14:47:49 +0100
+Subject: [PATCH] Fix #80889: Cannot set save handler when save_handler is
+ invalid
+
+There is no need to require a (valid) save_handler to be set, when a
+user handler is supposed to be set.  We just have to make sure, that
+no user handler is already set in this case.
+---
+ ext/session/session.c           |  2 +-
+ ext/session/tests/bug80889.phpt | 37 +++++++++++++++++++++++++++++++++
+ 2 files changed, 38 insertions(+), 1 deletion(-)
+ create mode 100644 ext/session/tests/bug80889.phpt
+
+diff --git a/ext/session/session.c b/ext/session/session.c
+index d652383b4560b..1fa9319fcfac1 100644
+--- a/ext/session/session.c
++++ b/ext/session/session.c
+@@ -2031,7 +2031,7 @@ static PHP_FUNCTION(session_set_save_handler)
+ 			remove_user_shutdown_function("session_shutdown", sizeof("session_shutdown") - 1);
+ 		}
+ 
+-		if (PS(mod) && PS(session_status) != php_session_active && PS(mod) != &ps_mod_user) {
++		if (PS(session_status) != php_session_active && (!PS(mod) || PS(mod) != &ps_mod_user)) {
+ 			ini_name = zend_string_init("session.save_handler", sizeof("session.save_handler") - 1, 0);
+ 			ini_val = zend_string_init("user", sizeof("user") - 1, 0);
+ 			PS(set_handler) = 1;
+diff --git a/ext/session/tests/bug80889.phpt b/ext/session/tests/bug80889.phpt
+new file mode 100644
+index 0000000000000..78e1a6ab64b4b
+--- /dev/null
++++ b/ext/session/tests/bug80889.phpt
+@@ -0,0 +1,37 @@
++--TEST--
++Bug #80889 (Cannot set save handler when save_handler is invalid)
++--SKIPIF--
++<?php include('skipif.inc'); ?>
++--INI--
++session.save_handler=whatever
++--FILE--
++<?php
++class DummyHandler implements SessionHandlerInterface {
++    public function open($savePath, $sessionName) {
++        return true;
++    }
++    public function close() {
++        return true;
++    }
++    public function read($id) {
++        return '';
++    }
++    public function write($id, $data) {
++        return true;
++    }
++    public function destroy($id) {
++        return true;
++    }
++    public function gc($maxlifetime) {
++        return true;
++    }
++}
++
++$initHandler = ini_get('session.save_handler');
++session_set_save_handler(new DummyHandler());
++$setHandler = ini_get('session.save_handler');
++var_dump($initHandler, $setHandler);
++?>
++--EXPECT--
++string(8) "whatever"
++string(4) "user"

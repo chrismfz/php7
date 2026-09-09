@@ -1,0 +1,44 @@
+commit 1c22ace0582fb0a2ec581237fcf1c5b9c41edd04
+Author: Xinchen Hui <laruence@gmail.com>
+Date:   Mon Feb 25 15:00:14 2019 +0800
+
+    Fixed bug #77660 (Segmentation fault on break 2147483648)
+
+diff --git a/Zend/tests/bug77660.phpt b/Zend/tests/bug77660.phpt
+new file mode 100644
+index 0000000000..94af1f9e2c
+--- /dev/null
++++ b/Zend/tests/bug77660.phpt
+@@ -0,0 +1,10 @@
++--TEST--
++Bug #77660 (Segmentation fault on break 2147483648)
++--SKIPIF--
++<?php if (PHP_INT_SIZE != 8) die("skip this test is for 64bit platform only"); ?>
++--FILE--
++<?php
++for(;;) break 2147483648;
++?>
++--EXPECTF--
++Fatal error: Cannot 'break' 2147483648 levels in %sbug77660.php on line %d
+diff --git a/Zend/zend_compile.c b/Zend/zend_compile.c
+index 06d0015337..d0bece7228 100644
+--- a/Zend/zend_compile.c
++++ b/Zend/zend_compile.c
+@@ -4508,7 +4508,7 @@ void zend_compile_break_continue(zend_ast *ast) /* {{{ */
+ 	zend_ast *depth_ast = ast->child[0];
+ 
+ 	zend_op *opline;
+-	int depth;
++	zend_long depth;
+ 
+ 	ZEND_ASSERT(ast->kind == ZEND_AST_BREAK || ast->kind == ZEND_AST_CONTINUE);
+ 
+@@ -4535,7 +4535,7 @@ void zend_compile_break_continue(zend_ast *ast) /* {{{ */
+ 			ast->kind == ZEND_AST_BREAK ? "break" : "continue");
+ 	} else {
+ 		if (!zend_handle_loops_and_finally_ex(depth)) {
+-			zend_error_noreturn(E_COMPILE_ERROR, "Cannot '%s' %d level%s",
++			zend_error_noreturn(E_COMPILE_ERROR, "Cannot '%s' " ZEND_LONG_FMT " level%s",
+ 				ast->kind == ZEND_AST_BREAK ? "break" : "continue",
+ 				depth, depth == 1 ? "" : "s");
+ 		}

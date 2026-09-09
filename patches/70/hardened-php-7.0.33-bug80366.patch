@@ -1,0 +1,19 @@
+Index: ext/standard/iptc.c
+IDEA additional info:
+Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
+<+>UTF-8
+===================================================================
+diff --git a/ext/standard/iptc.c b/ext/standard/iptc.c
+--- a/ext/standard/iptc.c	(revision 2e3de1b4a9bd9ab42e24144651c68b04fe3cd6d5)
++++ b/ext/standard/iptc.c	(revision 5b5029f2e86380548f461a8a11301bf75e31fbcc)
+@@ -216,7 +216,9 @@
+ 	}
+ 
+ 	if (spool < 2) {
+-		zend_fstat(fileno(fp), &sb);
++		if (zend_fstat(fileno(fp), &sb) != 0) {
++			RETURN_FALSE;
++		}
+ 
+ 		spoolbuf = zend_string_safe_alloc(1, iptcdata_len + sizeof(psheader) + 1024 + 1, sb.st_size, 0);
+ 		poi = (unsigned char*)ZSTR_VAL(spoolbuf);

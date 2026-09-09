@@ -1,0 +1,59 @@
+commit 4831e150c5ada631c1480098b8a42cbf024d8899
+Author: Nikita Popov <nikita.ppv@gmail.com>
+Date:   Tue Apr 23 12:43:07 2019 +0200
+
+    Fixed bug #77843
+
+diff --git a/ext/json/json_encoder.c b/ext/json/json_encoder.c
+index 8e3eecc..4163291 100644
+--- a/ext/json/json_encoder.c
++++ b/ext/json/json_encoder.c
+@@ -542,9 +542,15 @@ again:
+ 				break;
+ 			}
+ 			/* fallthrough -- Non-serializable object */
+-		case IS_ARRAY:
+-			php_json_encode_array(buf, val, options);
++		case IS_ARRAY: {
++			/* Avoid modifications (and potential freeing) of the array through a reference when a
++			 * jsonSerialize() method is invoked. */
++			zval zv;
++			ZVAL_COPY(&zv, val);
++			php_json_encode_array(buf, &zv, options);
++			zval_ptr_dtor_nogc(&zv);
+ 			break;
++		}
+ 
+ 		case IS_REFERENCE:
+ 			val = Z_REFVAL_P(val);
+diff --git a/ext/json/tests/bug77843.phpt b/ext/json/tests/bug77843.phpt
+new file mode 100644
+index 0000000..c525285
+--- /dev/null
++++ b/ext/json/tests/bug77843.phpt
+@@ -0,0 +1,25 @@
++--TEST--
++Bug #77843: Use after free with json serializer
++--FILE--
++<?php
++
++class X implements JsonSerializable {
++    public $prop = "value";
++    public function jsonSerialize() {
++        global $arr;
++        unset($arr[0]);
++        var_dump($this);
++        return $this;
++    }
++}
++
++$arr = [new X()];
++var_dump(json_encode([&$arr]));
++
++?>
++--EXPECT--
++object(X)#1 (1) {
++  ["prop"]=>
++  string(5) "value"
++}
++string(20) "[[{"prop":"value"}]]"

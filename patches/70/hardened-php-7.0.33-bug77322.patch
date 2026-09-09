@@ -1,0 +1,51 @@
+Index: ext/phar/tests/bug77322.phpt
+IDEA additional info:
+Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
+<+>UTF-8
+===================================================================
+diff --git a/ext/phar/tests/bug77322.phpt b/ext/phar/tests/bug77322.phpt
+new file mode 100644
+--- /dev/null	(revision d8d6ffaa06b38a3d83fea5905367f67452b99db7)
++++ b/ext/phar/tests/bug77322.phpt	(revision d8d6ffaa06b38a3d83fea5905367f67452b99db7)
+@@ -0,0 +1,24 @@
++--TEST--
++Bug #77322 (PharData::addEmptyDir('/') Possible integer overflow)
++--SKIPIF--
++<?php
++if (!extension_loaded('phar')) die('skip phar extension not available');
++?>
++--FILE--
++<?php
++$zip = new PharData(__DIR__ . '/bug77322.zip');
++$zip->addEmptyDir('/');
++var_dump($zip->count());
++
++$tar = new PharData(__DIR__ . '/bug77322.tar');
++$tar->addEmptyDir('/');
++var_dump($tar->count());
++?>
++--EXPECT--
++int(1)
++int(1)
++--CLEAN--
++<?php
++unlink(__DIR__ . '/bug77322.zip');
++unlink(__DIR__ . '/bug77322.tar');
++?>
+Index: ext/phar/util.c
+IDEA additional info:
+Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
+<+>UTF-8
+===================================================================
+diff --git a/ext/phar/util.c b/ext/phar/util.c
+--- a/ext/phar/util.c	(revision b42a00aeb1d0af812934706d10d4f1b034fb67ba)
++++ b/ext/phar/util.c	(revision d8d6ffaa06b38a3d83fea5905367f67452b99db7)
+@@ -578,7 +578,7 @@
+ 	} else {
+ 		etemp.flags = etemp.old_flags = PHAR_ENT_PERM_DEF_FILE;
+ 	}
+-	if (is_dir) {
++	if (is_dir && path_len) {
+ 		etemp.filename_len--; /* strip trailing / */
+ 		path_len--;
+ 	}

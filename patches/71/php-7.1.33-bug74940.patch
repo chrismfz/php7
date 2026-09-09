@@ -1,0 +1,55 @@
+diff --git a/ext/date/php_date.c b/ext/date/php_date.c
+index 8f376df..723ee3b 100644
+--- a/ext/date/php_date.c
++++ b/ext/date/php_date.c
+@@ -647,6 +647,7 @@ static zend_object *date_object_clone_interval(zval *this_ptr);
+ static zend_object *date_object_clone_period(zval *this_ptr);
+ 
+ static int date_object_compare_date(zval *d1, zval *d2);
++static int date_object_compare_timezone(zval *tz1, zval *tz2);
+ static HashTable *date_object_get_gc(zval *object, zval **table, int *n);
+ static HashTable *date_object_get_properties(zval *object);
+ static HashTable *date_object_get_gc_interval(zval *object, zval **table, int *n);
+@@ -2101,6 +2102,7 @@ static void date_register_classes(void) /* {{{ */
+ 	date_object_handlers_timezone.clone_obj = date_object_clone_timezone;
+ 	date_object_handlers_timezone.get_properties = date_object_get_properties_timezone;
+ 	date_object_handlers_timezone.get_gc = date_object_get_gc_timezone;
++	date_object_handlers_timezone.compare_objects = date_object_compare_timezone;
+ 	date_object_handlers_timezone.get_debug_info = date_object_get_debug_info_timezone;
+ 
+ #define REGISTER_TIMEZONE_CLASS_CONST_STRING(const_name, value) \
+@@ -2224,6 +2226,34 @@ static int date_object_compare_date(zval *d1, zval *d2) /* {{{ */
+ 	return timelib_time_compare(o1->time, o2->time);
+ } /* }}} */
+ 
++static int date_object_compare_timezone(zval *tz1, zval *tz2) /* {{{ */
++{
++	php_timezone_obj *o1, *o2;
++
++	o1 = Z_PHPTIMEZONE_P(tz1);
++	o2 = Z_PHPTIMEZONE_P(tz2);
++
++	if (!o1->initialized || !o2->initialized) {
++		php_error_docref(NULL, E_WARNING, "Trying to compare an incomplete DateTimeZone object");
++		return 1;
++	}
++
++	if (o1->type != o2->type) {
++		php_error_docref(NULL, E_WARNING, "Trying to compare different kinds of DateTimeZone objects");
++		return 1;
++	}
++
++	switch (o1->type) {
++		case TIMELIB_ZONETYPE_OFFSET:
++			return o1->tzi.utc_offset == o2->tzi.utc_offset ? 0 : 1;
++		case TIMELIB_ZONETYPE_ABBR:
++			return strcmp(o1->tzi.z.abbr, o2->tzi.z.abbr) ? 1 : 0;
++		case TIMELIB_ZONETYPE_ID:
++			return strcmp(o1->tzi.tz->name, o2->tzi.tz->name) ? 1 : 0;
++		EMPTY_SWITCH_DEFAULT_CASE();
++	}
++} /* }}} */
++
+ static HashTable *date_object_get_gc(zval *object, zval **table, int *n) /* {{{ */
+ {
+ 	*table = NULL;

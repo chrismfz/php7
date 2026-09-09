@@ -1,0 +1,58 @@
+Index: ext/standard/tests/serialize/bug80411.phpt
+IDEA additional info:
+Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
+<+>UTF-8
+===================================================================
+diff --git a/ext/standard/tests/serialize/bug80411.phpt b/ext/standard/tests/serialize/bug80411.phpt
+new file mode 100644
+--- /dev/null	(revision c54de4bb73c18840ade389632534a4e08da967c5)
++++ b/ext/standard/tests/serialize/bug80411.phpt	(revision c54de4bb73c18840ade389632534a4e08da967c5)
+@@ -0,0 +1,31 @@
++--TEST--
++Bug #80411: References to null-serialized object break serialize()
++--FILE--
++<?php
++
++class UnSerializable implements Serializable
++{
++  public function serialize() {}
++  public function unserialize($serialized) {}
++}
++
++$unser = new UnSerializable();
++$arr = [$unser];
++$arr[1] = &$arr[0];
++$arr[2] = 'endcap';
++$arr[3] = &$arr[2];
++
++$data = serialize($arr);
++echo $data . PHP_EOL;
++$recovered = unserialize($data);
++var_export($recovered);
++
++?>
++--EXPECT--
++a:4:{i:0;N;i:1;N;i:2;s:6:"endcap";i:3;R:4;}
++array (
++  0 => NULL,
++  1 => NULL,
++  2 => 'endcap',
++  3 => 'endcap',
++)
+Index: ext/standard/var.c
+IDEA additional info:
+Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
+<+>UTF-8
+===================================================================
+diff --git a/ext/standard/var.c b/ext/standard/var.c
+--- a/ext/standard/var.c	(revision 5b5029f2e86380548f461a8a11301bf75e31fbcc)
++++ b/ext/standard/var.c	(revision c54de4bb73c18840ade389632534a4e08da967c5)
+@@ -618,7 +618,7 @@
+ 
+ 	if (zv) {
+ 		/* References are only counted once, undo the data->n increment above */
+-		if (is_ref) {
++		if (is_ref && Z_LVAL_P(zv) != -1) {
+ 			data->n -= 1;
+ 		}
+ 

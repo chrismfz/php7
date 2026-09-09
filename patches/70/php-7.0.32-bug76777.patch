@@ -1,0 +1,91 @@
+commit cf2fc66b0289dc7a34a0d9c0e67bccb8e97472bd
+Author: Ville Hukkamaki <vhu@iki.fi>
+Date:   Wed Aug 22 06:19:14 2018 +0200
+
+    Fixed bug #76777 and added test
+    
+    Set undefined values to null rather than undefined.
+
+diff --git a/NEWS b/NEWS
+index b38b0f6..4c247f2 100644
+--- a/NEWS
++++ b/NEWS
+@@ -17,6 +17,10 @@ PHP                                                                        NEWS
+   . Fixed bug #74484 (MessageFormatter::formatMessage memory corruption with
+     11+ named placeholders). (Anatol)
+ 
++- libxml:
++  . Fixed bug #76777 ("public id" parameter of libxml_set_external_entity_loader
++    callback undefined). (Ville Hukkamäki)
++
+ - mbstring:
+   . Fixed bug #76704 (mb_detect_order return value varies based on argument
+     type). (cmb)
+diff --git a/ext/libxml/libxml.c b/ext/libxml/libxml.c
+index 226228b..85f239d 100644
+--- a/ext/libxml/libxml.c
++++ b/ext/libxml/libxml.c
+@@ -591,12 +591,12 @@ static xmlParserInputPtr _php_libxml_external_entity_loader(const char *URL,
+ 	if (ID != NULL) {
+ 		ZVAL_STRING(&params[0], ID);
+ 	} else {
+-		ZVAL_UNDEF(&params[0]);
++		ZVAL_NULL(&params[0]);
+ 	}
+ 	if (URL != NULL) {
+ 		ZVAL_STRING(&params[1], URL);
+ 	} else {
+-		ZVAL_UNDEF(&params[1]);
++		ZVAL_NULL(&params[1]);
+ 	}
+ 	ctxzv = &params[2];
+ 	array_init_size(ctxzv, 4);
+diff --git a/ext/libxml/tests/bug76777.phpt b/ext/libxml/tests/bug76777.phpt
+new file mode 100644
+index 0000000..ba9fd69
+--- /dev/null
++++ b/ext/libxml/tests/bug76777.phpt
+@@ -0,0 +1,43 @@
++--TEST--
++Bug #76777 (first parameter of libxml_set_external_entity_loader callback undefined)
++--SKIPIF--
++<?php
++if (!extension_loaded('libxml')) die('skip');
++if (getenv("SKIP_ONLINE_TESTS")) die('skip online test');
++?>
++--FILE--
++<?php
++$xml=<<<EOF
++<?xml version="1.0"?>
++<test/>
++EOF;
++
++$xsd=<<<EOF
++<?xml version="1.0"?>
++<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema">
++  <xs:include schemaLocation="nonexistent.xsd"/>
++  <xs:element name="test"/>
++</xs:schema>
++EOF;
++
++libxml_set_external_entity_loader(function($p,$s,$c) {
++    var_dump($p,$s,$c);
++    die();
++});
++
++$dom=new DOMDocument($xml);
++$dom->schemaValidateSource($xsd);
++?>
++--EXPECTF--
++NULL
++string(15) "nonexistent.xsd"
++array(4) {
++  ["directory"]=>
++  NULL
++  ["intSubName"]=>
++  NULL
++  ["extSubURI"]=>
++  NULL
++  ["extSubSystem"]=>
++  NULL
++}

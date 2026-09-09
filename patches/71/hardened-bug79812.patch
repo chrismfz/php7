@@ -1,0 +1,36 @@
+commit 0a36d417e87680afcd9d3108650aaa287524ce30
+Author: Christoph M. Becker <cmbecker69@gmx.de>
+Date:   Fri Apr 9 13:09:21 2021 +0200
+
+    Fix #79812: Potential integer overflow in pcntl_exec()
+    
+    We use the proper type, and make sure that no overflow can occur by
+    using `safe_emalloc()` (we can assume that neither string length is
+    `SIZE_MAX`).
+    
+    Closes GH-6845.
+
+diff --git a/ext/pcntl/pcntl.c b/ext/pcntl/pcntl.c
+index 1bb67af6c5..2d19b7d4ed 100644
+--- a/ext/pcntl/pcntl.c
++++ b/ext/pcntl/pcntl.c
+@@ -955,7 +955,7 @@ PHP_FUNCTION(pcntl_exec)
+ 	int envc = 0, envi = 0;
+ 	char **argv = NULL, **envp = NULL;
+ 	char **current_arg, **pair;
+-	int pair_length;
++	size_t pair_length;
+ 	zend_string *key;
+ 	char *path;
+ 	size_t path_len;
+@@ -1015,8 +1015,9 @@ PHP_FUNCTION(pcntl_exec)
+ 			}
+ 
+ 			/* Length of element + equal sign + length of key + null */
++			ZEND_ASSERT(Z_STRLEN_P(element) < SIZE_MAX && ZSTR_LEN(key) < SIZE_MAX);
++			*pair = safe_emalloc(Z_STRLEN_P(element) + 1, sizeof(char), ZSTR_LEN(key) + 1);
+ 			pair_length = Z_STRLEN_P(element) + ZSTR_LEN(key) + 2;
+-			*pair = emalloc(pair_length);
+ 			strlcpy(*pair, ZSTR_VAL(key), ZSTR_LEN(key) + 1);
+ 			strlcat(*pair, "=", pair_length);
+ 			strlcat(*pair, Z_STRVAL_P(element), pair_length);

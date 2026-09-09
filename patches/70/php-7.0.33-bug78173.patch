@@ -1,0 +1,43 @@
+commit d54220bc795a7025a162c61128c98a7af14087a4
+Author: Asher Baker <asher.baker@tripleplay.tv>
+Date:   Tue Jun 18 15:05:38 2019 +0100
+
+    Fix #78173: XML-RPC mutates immutable objects during encoding
+    
+    With opcache.protect_memory=1 enabled, the XML-RPC extension causes a
+    segfault on PHP 7.2 as it is modifying the recursion counter of objects
+    it touches, without first checking if they are immutable or not.
+    
+    This doesn't affect 7.3+
+
+diff --git a/ext/xmlrpc/xmlrpc-epi-php.c b/ext/xmlrpc/xmlrpc-epi-php.c
+index 36fbff123c..69d9658a77 100644
+--- a/ext/xmlrpc/xmlrpc-epi-php.c
++++ b/ext/xmlrpc/xmlrpc-epi-php.c
+@@ -556,7 +556,7 @@ static XMLRPC_VALUE PHP_to_XMLRPC_worker (const char* key, zval* in_val, int dep
+ 						XMLRPC_VECTOR_TYPE vtype;
+ 
+ 						ht = HASH_OF(&val);
+-						if (ht && ht->u.v.nApplyCount > 1) {
++						if (ht && ZEND_HASH_APPLY_PROTECTION(ht) && ht->u.v.nApplyCount > 1) {
+ 							php_error_docref(NULL, E_ERROR, "XML-RPC doesn't support circular references");
+ 							return NULL;
+ 						}
+@@ -570,7 +570,7 @@ static XMLRPC_VALUE PHP_to_XMLRPC_worker (const char* key, zval* in_val, int dep
+ 						ZEND_HASH_FOREACH_KEY_VAL(Z_ARRVAL(val_arr), num_index, my_key, pIter) {
+ 							ZVAL_DEREF(pIter);
+ 							ht = HASH_OF(pIter);
+-							if (ht) {
++							if (ht && ZEND_HASH_APPLY_PROTECTION(ht)) {
+ 								ht->u.v.nApplyCount++;
+ 							}
+ 							if (my_key == NULL) {
+@@ -587,7 +587,7 @@ static XMLRPC_VALUE PHP_to_XMLRPC_worker (const char* key, zval* in_val, int dep
+ 							} else {
+ 								XMLRPC_AddValueToVector(xReturn, PHP_to_XMLRPC_worker(ZSTR_VAL(my_key), pIter, depth++));
+ 							}
+-							if (ht) {
++							if (ht && ZEND_HASH_APPLY_PROTECTION(ht)) {
+ 								ht->u.v.nApplyCount--;
+ 							}
+ 						} ZEND_HASH_FOREACH_END();

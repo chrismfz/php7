@@ -1,0 +1,157 @@
+commit 963e50c8c48ecfbe7444445e5ca8e33530d630d0
+Author: Christoph M. Becker <cmbecker69@gmx.de>
+Date:   Tue Feb 16 19:36:37 2021 +0100
+
+    Fix #75776: Flushing streams with compression filter is broken
+    
+    First, the `bzip2.compress` filter has the same issue as `zlib.deflate`
+    so we port the respective fix[1] to ext/bz2.
+    
+    Second, there is still an issue, if a stream with an attached
+    compression filter is flushed before it is closed, without any writes
+    in between.  In that case, the compression is never finalized.  We fix
+    this by enforcing a `_php_stream_flush()` with the `closing` flag set
+    in `_php_stream_free()`, whenever a write filter is attached.  This
+    call is superfluous for most write filters, but does not hurt, even
+    when it is unnecessary.
+    
+    [1] <http://git.php.net/?p=php-src.git;a=commit;h=20e75329f2adb11dd231852c061926d0e4080929>
+    
+    Closes GH-6703.
+
+diff --git a/ext/bz2/bz2_filter.c b/ext/bz2/bz2_filter.c
+index e7d7c3334f..fb79cb5dc6 100644
+--- a/ext/bz2/bz2_filter.c
++++ b/ext/bz2/bz2_filter.c
+@@ -41,6 +41,7 @@ typedef struct _php_bz2_filter_data {
+ 	enum strm_status status;              /* Decompress option */
+ 	unsigned int small_footprint : 1;     /* Decompress option */
+ 	unsigned int expect_concatenated : 1; /* Decompress option */
++	unsigned int is_flushed : 1;          /* only for compression */
+ 
+ 	int persistent;
+ } php_bz2_filter_data;
+@@ -228,6 +229,8 @@ static php_stream_filter_status_t php_bz2_compress_filter(
+ 		bucket = php_stream_bucket_make_writeable(buckets_in->head);
+ 
+ 		while (bin < bucket->buflen) {
++			int flush_mode;
++
+ 			desired = bucket->buflen - bin;
+ 			if (desired > data->inbuf_len) {
+ 				desired = data->inbuf_len;
+@@ -235,7 +238,9 @@ static php_stream_filter_status_t php_bz2_compress_filter(
+ 			memcpy(data->strm.next_in, bucket->buf + bin, desired);
+ 			data->strm.avail_in = desired;
+ 
+-			status = BZ2_bzCompress(&(data->strm), flags & PSFS_FLAG_FLUSH_CLOSE ? BZ_FINISH : (flags & PSFS_FLAG_FLUSH_INC ? BZ_FLUSH : BZ_RUN));
++			flush_mode = flags & PSFS_FLAG_FLUSH_CLOSE ? BZ_FINISH : (flags & PSFS_FLAG_FLUSH_INC ? BZ_FLUSH : BZ_RUN);
++			data->is_flushed = flush_mode != BZ_RUN;
++			status = BZ2_bzCompress(&(data->strm), flush_mode);
+ 			if (status != BZ_RUN_OK && status != BZ_FLUSH_OK && status != BZ_FINISH_OK) {
+ 				/* Something bad happened */
+ 				php_stream_bucket_delref(bucket);
+@@ -261,11 +266,12 @@ static php_stream_filter_status_t php_bz2_compress_filter(
+ 		php_stream_bucket_delref(bucket);
+ 	}
+ 
+-	if (flags & PSFS_FLAG_FLUSH_CLOSE) {
++	if (flags & PSFS_FLAG_FLUSH_CLOSE || ((flags & PSFS_FLAG_FLUSH_INC) && !data->is_flushed)) {
+ 		/* Spit it out! */
+ 		status = BZ_FINISH_OK;
+ 		while (status == BZ_FINISH_OK) {
+-			status = BZ2_bzCompress(&(data->strm), BZ_FINISH);
++			status = BZ2_bzCompress(&(data->strm), (flags & PSFS_FLAG_FLUSH_CLOSE ? BZ_FINISH : BZ_FLUSH));
++			data->is_flushed = 1;
+ 			if (data->strm.avail_out < data->outbuf_len) {
+ 				size_t bucketlen = data->outbuf_len - data->strm.avail_out;
+ 
+@@ -381,6 +387,7 @@ static php_stream_filter *php_bz2_filter_create(const char *filtername, zval *fi
+ 		}
+ 
+ 		status = BZ2_bzCompressInit(&(data->strm), blockSize100k, 0, workFactor);
++		data->is_flushed = 1;
+ 		fops = &php_bz2_compress_ops;
+ 	} else {
+ 		status = BZ_DATA_ERROR;
+diff --git a/ext/bz2/tests/bug75776.phpt b/ext/bz2/tests/bug75776.phpt
+new file mode 100644
+index 0000000000..43cc6e07b5
+--- /dev/null
++++ b/ext/bz2/tests/bug75776.phpt
+@@ -0,0 +1,24 @@
++--TEST--
++Bug #75776 (Flushing streams with compression filter is broken)
++--SKIPIF--
++<?php
++if (!extension_loaded('bz2')) die('skip bz2 extension not available');
++?>
++--FILE--
++<?php
++$text = str_repeat('0123456789abcdef', 1000);
++
++$temp = fopen('php://temp', 'r+');
++stream_filter_append($temp, 'bzip2.compress', STREAM_FILTER_WRITE);
++fwrite($temp, $text);
++
++rewind($temp);
++
++var_dump(bin2hex(stream_get_contents($temp)));
++var_dump(ftell($temp));
++
++fclose($temp);
++?>
++--EXPECT--
++string(144) "425a68343141592653599fe7bbbf0001f389007fe03f002000902980026826aa80003ea9061520c6a41954833a9069520d6a41b54837a9071520e6a41d5483ba9079520f6a41f548"
++int(72)
+diff --git a/ext/standard/tests/streams/bug75776.phpt b/ext/standard/tests/streams/bug75776.phpt
+new file mode 100644
+index 0000000000..2bb78ec621
+--- /dev/null
++++ b/ext/standard/tests/streams/bug75776.phpt
+@@ -0,0 +1,32 @@
++--TEST--
++Bug #75776 (Flushing streams with compression filter is broken)
++--SKIPIF--
++<?php
++if (!extension_loaded('zlib')) die('skip zlib extension not available');
++if (!extension_loaded('bz2')) die('skip bz2 extension not available');
++?>
++--FILE--
++<?php
++$compression = [
++    'gz' => ['zlib.deflate', 'gzinflate'],
++    'bz2' => ['bzip2.compress', 'bzdecompress']
++];
++foreach ($compression as $ext => [$filter, $function]) {
++    $stream = fopen(__DIR__ . "/75776.$ext", 'w');
++    stream_filter_append($stream, $filter);
++    fwrite($stream,"sdfgdfg");
++    fflush($stream);
++    fclose($stream);
++
++    $compressed = file_get_contents(__DIR__ . "/75776.$ext");
++    var_dump($function($compressed));
++}
++?>
++--EXPECT--
++string(7) "sdfgdfg"
++string(7) "sdfgdfg"
++--CLEAN--
++<?php
++@unlink(__DIR__ . "/75776.gz");
++@unlink(__DIR__ . "/75776.bz2");
++?>
+diff --git a/main/streams/streams.c b/main/streams/streams.c
+index 5f6bf88aa9..c1ecf34623 100644
+--- a/main/streams/streams.c
++++ b/main/streams/streams.c
+@@ -445,7 +445,7 @@ fprintf(stderr, "stream_free: %s:%p[%s] preserve_handle=%d release_cast=%d remov
+ 		(close_options & PHP_STREAM_FREE_RSRC_DTOR) == 0);
+ #endif
+ 
+-	if (stream->flags & PHP_STREAM_FLAG_WAS_WRITTEN) {
++	if (stream->flags & PHP_STREAM_FLAG_WAS_WRITTEN || stream->writefilters.head) {
+ 		/* make sure everything is saved */
+ 		_php_stream_flush(stream, 1);
+ 	}

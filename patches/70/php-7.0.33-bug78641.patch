@@ -1,0 +1,81 @@
+commit fd3118ffb0a47d39489607967172c3b3fc75277a
+Author: Christoph M. Becker <cmbecker69@gmx.de>
+Date:   Tue Oct 8 09:25:56 2019 +0200
+
+    Fix #78641: addGlob can modify given remove_path value
+    
+    `remove_path` points to the given string, so we must not modify it.
+    Instead we use a duplicate, if we need the modification.
+    
+    We may want to switch to `zend_string`s in master.
+
+diff --git a/ext/zip/php_zip.c b/ext/zip/php_zip.c
+index 7f7880d..6b29266 100644
+--- a/ext/zip/php_zip.c
++++ b/ext/zip/php_zip.c
+@@ -1667,7 +1667,7 @@ static void php_zip_add_from_pattern(INTERNAL_FUNCTION_PARAMETERS, int type) /*
+ 	struct zip *intern;
+ 	zval *self = getThis();
+ 	char *path = ".";
+-	char *remove_path = NULL;
++	char *remove_path = NULL, *save_remove_path;
+ 	char *add_path = NULL;
+ 	size_t  add_path_len, remove_path_len = 0, path_len = 1;
+ 	zend_long remove_all_path = 0;
+@@ -1703,10 +1703,11 @@ static void php_zip_add_from_pattern(INTERNAL_FUNCTION_PARAMETERS, int type) /*
+ 		RETURN_FALSE;
+ 	}
+ 
++	save_remove_path = remove_path;
+ 	if (remove_path && remove_path_len > 1) {
+ 		size_t real_len = strlen(remove_path);
+ 		if ((real_len > 1) && ((remove_path[real_len - 1] == '/') || (remove_path[real_len - 1] == '\\'))) {
+-			remove_path[real_len - 1] = '\0';
++			remove_path = estrndup(remove_path, real_len - 1);
+ 		}
+ 	}
+ 
+@@ -1766,6 +1767,9 @@ static void php_zip_add_from_pattern(INTERNAL_FUNCTION_PARAMETERS, int type) /*
+ 			}
+ 		}
+ 	}
++	if (remove_path != save_remove_path) {
++		efree(remove_path);
++	}
+ }
+ /* }}} */
+ 
+diff --git a/ext/zip/tests/bug78641.phpt b/ext/zip/tests/bug78641.phpt
+new file mode 100644
+index 0000000..3198c6c
+--- /dev/null
++++ b/ext/zip/tests/bug78641.phpt
+@@ -0,0 +1,28 @@
++--TEST--
++Bug #78641 (addGlob can modify given remove_path value)
++--SKIPIF--
++<?php
++if (!extension_loaded('zip')) die('skip zip extension not available');
++?>
++--FILE--
++<?php
++define("TMPDIR", __DIR__ . "/");
++
++$file = TMPDIR . 'bug78641';
++touch($file);
++
++$zip = new ZipArchive();
++$zip->open(TMPDIR . "bug78641.zip", ZipArchive::CREATE | ZipArchive::OVERWRITE);
++var_dump(basename(TMPDIR));
++$zip->addGlob($file, 0, ["remove_path" => TMPDIR]);
++var_dump(basename(TMPDIR));
++$zip->close();
++?>
++--EXPECT--
++string(5) "tests"
++string(5) "tests"
++--CLEAN--
++<?php
++unlink(__DIR__ . '/bug78641');
++unlink(__DIR__ . '/bug78641.zip');
++?>

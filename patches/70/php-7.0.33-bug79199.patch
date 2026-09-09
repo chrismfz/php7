@@ -1,0 +1,12 @@
+diff --git a/ext/curl/interface.c b/ext/curl/interface.c
+index e81968d..acfcde5 100644
+--- a/ext/curl/interface.c
++++ b/ext/curl/interface.c
+@@ -2015,7 +2015,6 @@ PHP_FUNCTION(curl_copy_handle)
+ 	dupch = alloc_curl_handle();
+ 
+ 	dupch->cp = cp;
+-	Z_ADDREF_P(zid);
+ 	if (!Z_ISUNDEF(ch->handlers->write->stream)) {
+ 		Z_ADDREF(ch->handlers->write->stream);
+ 	}

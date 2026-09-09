@@ -1,0 +1,42 @@
+commit 6fcde56b0370125c32e6a7d198aff2afd01c35dc
+Author: Nikita Popov <nikita.ppv@gmail.com>
+Date:   Mon Sep 30 15:05:35 2019 +0200
+
+    Fixed bug #78612
+
+diff --git a/ext/standard/string.c b/ext/standard/string.c
+index 2907c22..dcf9cb4 100644
+--- a/ext/standard/string.c
++++ b/ext/standard/string.c
+@@ -3027,6 +3027,7 @@ static void php_strtr_array(zval *return_value, zend_string *input, HashTable *p
+ 				len = ZSTR_LEN(key_used);
+ 				if (UNEXPECTED(len > slen)) {
+ 					/* skip long patterns */
++					zend_string_release(key_used);
+ 					continue;
+ 				}
+ 				if (len > maxlen) {
+diff --git a/ext/standard/tests/strings/bug78612.phpt b/ext/standard/tests/strings/bug78612.phpt
+new file mode 100644
+index 0000000..7dad605
+--- /dev/null
++++ b/ext/standard/tests/strings/bug78612.phpt
+@@ -0,0 +1,18 @@
++--TEST--
++Bug #78612 (strtr leaks memory when integer keys are used and the subject string shorter).
++--FILE--
++<?php
++
++$find_replace = array();
++$_a = 7111222333000001;
++$_b = 5000001;
++
++for ($j=0; $j<10; $j++) {
++	$find_replace[$_a + $j] = $_b + $j;
++}
++
++echo strtr('Hello', $find_replace), "\n";
++
++?>
++--EXPECT--
++Hello

@@ -1,0 +1,67 @@
+commit 70b2fca220fc27a16cc9f81f6c6da0f2a6d6d610
+Author: Christoph M. Becker <cmbecker69@gmx.de>
+Date:   Wed Aug 22 13:32:55 2018 +0200
+
+    Fix #76778: array_reduce leaks memory if callback throws exception
+    
+    We have to release the result variable in the error case, too.
+
+diff --git a/NEWS b/NEWS
+index 4c247f2..78d9dba 100644
+--- a/NEWS
++++ b/NEWS
+@@ -41,6 +41,10 @@ PHP                                                                        NEWS
+   . Fixed bug #68175 (RegexIterator pregFlags are NULL instead of 0). (Tim
+     Siebels)
+ 
++- Standard:
++  . Fixed bug #76778 (array_reduce leaks memory if callback throws exception).
++    (cmb)
++
+ - zlib:
+   . Fixed bug #65988 (Zlib version check fails when an include/zlib/ style dir
+     is passed to the --with-zlib configure option). (Jay Bonci)
+diff --git a/ext/standard/array.c b/ext/standard/array.c
+index a1e3faa..4ba286e 100644
+--- a/ext/standard/array.c
++++ b/ext/standard/array.c
+@@ -5243,6 +5243,7 @@ PHP_FUNCTION(array_reduce)
+ 		} else {
+ 			zval_ptr_dtor(&args[1]);
+ 			zval_ptr_dtor(&args[0]);
++			zval_ptr_dtor(&result);
+ 			return;
+ 		}
+ 	} ZEND_HASH_FOREACH_END();
+diff --git a/ext/standard/tests/array/bug76778.phpt b/ext/standard/tests/array/bug76778.phpt
+new file mode 100644
+index 0000000..2c65497
+--- /dev/null
++++ b/ext/standard/tests/array/bug76778.phpt
+@@ -0,0 +1,26 @@
++--TEST--
++Bug #76778 (array_reduce leaks memory if callback throws exception)
++--SKIPIF--
++<?php
++if (getenv("SKIP_SLOW_TESTS")) die('skip slow test');
++?>
++--INI--
++memory_limit=32M
++--FILE--
++<?php
++for ($i = 0; $i < 100; $i++) {
++    try {
++        array_reduce(
++            [1],
++            function ($carry, $item) {
++                throw new Exception;
++            },
++            range(1, 200000)
++        );
++    } catch (Exception $e) {
++    }
++}
++?>
++===DONE===
++--EXPECT--
++===DONE===

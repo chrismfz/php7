@@ -1,0 +1,24 @@
+diff --git a/Zend/zend_vm_def.h b/Zend/zend_vm_def.h
+index b2f9bbd..3778ef3 100644
+--- a/Zend/zend_vm_def.h
++++ b/Zend/zend_vm_def.h
+@@ -4820,6 +4820,7 @@ ZEND_VM_HANDLER(164, ZEND_RECV_VARIADIC, ANY, ANY)
+ 		ZEND_HASH_FILL_PACKED(Z_ARRVAL_P(params)) {
+ 			param = EX_VAR_NUM(EX(func)->op_array.last_var + EX(func)->op_array.T);
+ 			if (UNEXPECTED((EX(func)->op_array.fn_flags & ZEND_ACC_HAS_TYPE_HINTS) != 0)) {
++				ZEND_ADD_CALL_FLAG(execute_data, ZEND_CALL_FREE_EXTRA_ARGS);
+ 				do {
+ 					zend_verify_arg_type(EX(func), arg_num, param, NULL, CACHE_ADDR(opline->op2.num));
+ 					if (Z_OPT_REFCOUNTED_P(param)) Z_ADDREF_P(param);
+diff --git a/Zend/zend_vm_execute.h b/Zend/zend_vm_execute.h
+index 1fd6603..6e65e76 100644
+--- a/Zend/zend_vm_execute.h
++++ b/Zend/zend_vm_execute.h
+@@ -1216,6 +1216,7 @@ static ZEND_OPCODE_HANDLER_RET ZEND_FASTCALL ZEND_RECV_VARIADIC_SPEC_HANDLER(ZEN
+ 		ZEND_HASH_FILL_PACKED(Z_ARRVAL_P(params)) {
+ 			param = EX_VAR_NUM(EX(func)->op_array.last_var + EX(func)->op_array.T);
+ 			if (UNEXPECTED((EX(func)->op_array.fn_flags & ZEND_ACC_HAS_TYPE_HINTS) != 0)) {
++				ZEND_ADD_CALL_FLAG(execute_data, ZEND_CALL_FREE_EXTRA_ARGS);
+ 				do {
+ 					zend_verify_arg_type(EX(func), arg_num, param, NULL, CACHE_ADDR(opline->op2.num));
+ 					if (Z_OPT_REFCOUNTED_P(param)) Z_ADDREF_P(param);

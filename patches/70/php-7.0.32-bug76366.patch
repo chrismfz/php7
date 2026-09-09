@@ -1,0 +1,81 @@
+commit 47fb17b108b401d8dbb5f1b94ec99ea0d020288a
+Author: cdoco <gao_zihang@hotmail.com>
+Date:   Fri Jul 6 22:13:46 2018 +0800
+
+    Fixed bug #76366 (references in sub-array for filtering breaks the filter)
+
+diff --git a/NEWS b/NEWS
+index 7c94d22..eee43d8 100644
+--- a/NEWS
++++ b/NEWS
+@@ -2,6 +2,10 @@ PHP                                                                        NEWS
+ |||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||
+ ?? ??? ????, PHP 7.1.21
+ 
++- Filter:
++  . Fixed bug #76366 (References in sub-array for filtering breaks the filter).
++    (ZiHang Gao)
++
+ - PDO_Firebird:
+   . Fixed bug #76488 (Memory leak when fetching a BLOB field). (Simonov Denis)
+ 
+diff --git a/ext/filter/filter.c b/ext/filter/filter.c
+index a4ca1e0..5a34caa 100644
+--- a/ext/filter/filter.c
++++ b/ext/filter/filter.c
+@@ -621,6 +621,9 @@ static void php_filter_call(zval *filtered, zend_long filter, zval *filter_args,
+ 		}
+ 
+ 		if ((option = zend_hash_str_find(HASH_OF(filter_args), "options", sizeof("options") - 1)) != NULL) {
++			/* avoid reference type */
++			ZVAL_DEREF(option);
++
+ 			if (filter != FILTER_CALLBACK) {
+ 				if (Z_TYPE_P(option) == IS_ARRAY) {
+ 					options = option;
+diff --git a/ext/filter/tests/bug76366.phpt b/ext/filter/tests/bug76366.phpt
+new file mode 100644
+index 0000000..56cbb9d
+--- /dev/null
++++ b/ext/filter/tests/bug76366.phpt
+@@ -0,0 +1,40 @@
++--TEST--
++Bug #76366 (references in sub-array for filtering breaks the filter)
++--SKIPIF--
++<?php
++if (!extension_loaded('filter')) die('skip filter extension not available');
++?>
++--FILE--
++<?php
++
++#array to filter
++$data = ['foo' => 6];
++
++#filter args
++$args = [
++    'foo'=> [
++        'filter' => FILTER_VALIDATE_INT,
++        'flags' => FILTER_FORCE_ARRAY
++    ]
++];
++
++$args['foo']['options'] = [];
++
++#create reference
++$options = &$args['foo']['options'];
++
++#set options
++$options['min_range'] = 1;
++$options['max_range'] = 5;
++
++#show the filter result
++var_dump(filter_var_array($data, $args));
++?>
++--EXPECT--
++array(1) {
++  ["foo"]=>
++  array(1) {
++    [0]=>
++    bool(false)
++  }
++}

@@ -1,0 +1,49 @@
+commit 4a91f66b8f528e6d09e2c7fa04d87e2dc981bd34
+Author: Nikita Popov <nikita.ppv@gmail.com>
+Date:   Fri Jul 12 16:29:18 2019 +0200
+
+    Fixed bug #78279
+    
+    Even if we don't initialize the callback on every request, we
+    should still reset our globals to default values...
+
+diff --git a/NEWS b/NEWS
+index dd2bb55d45..dcaea723c2 100644
+--- a/NEWS
++++ b/NEWS
+@@ -20,6 +20,10 @@ PHP                                                                        NEWS
+ - Date:
+   . Fixed #69044 (discrepency between time and microtime). (krakjoe)
+ 
++- Libxml:
++  . Fixed bug #78279 (libxml_disable_entity_loader settings is shared between
++    requests (cgi-fcgi)). (Nikita)
++
+ - LiteSpeed:
+   . Updated to LiteSpeed SAPI V7.4.3 (increased response header count limit from
+     100 to 1000, added crash handler to cleanly shutdown PHP request, added
+diff --git a/ext/libxml/libxml.c b/ext/libxml/libxml.c
+index 068b3a248d..c871cb89bd 100644
+--- a/ext/libxml/libxml.c
++++ b/ext/libxml/libxml.c
+@@ -879,13 +879,14 @@ static PHP_RINIT_FUNCTION(libxml)
+ 		xmlSetGenericErrorFunc(NULL, php_libxml_error_handler);
+ 		xmlParserInputBufferCreateFilenameDefault(php_libxml_input_buffer_create_filename);
+ 		xmlOutputBufferCreateFilenameDefault(php_libxml_output_buffer_create_filename);
+-
+-		/* Enable the entity loader by default. This ensures that
+-		 * other threads/requests that might have disabled the loader
+-		 * do not affect the current request.
+-		 */
+-		LIBXML(entity_loader_disabled) = 0;
+ 	}
++
++	/* Enable the entity loader by default. This ensures that
++	 * other threads/requests that might have disabled the loader
++	 * do not affect the current request.
++	 */
++	LIBXML(entity_loader_disabled) = 0;
++
+ 	return SUCCESS;
+ }
+ 

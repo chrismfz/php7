@@ -1,0 +1,65 @@
+commit 768ad70f70a1bebed38e2b06a7515e3c61482f75
+Author: Andrew Collington <andy@amnuts.com>
+Date:   Sun Jul 14 14:49:38 2019 +0100
+
+    Fix bug #78291 Missing opcache directives
+    
+    New opcache directives have been added recently which are returned
+    if using `ini_get_all('zend opcache')` but are not listed in the
+    directives if using `opcache_get_configuration()`.  This fix adds
+    those missing directives as well as if `opcache.mmap_base` is used
+    instead of `opcache.lockfile_path`.  Also adds a test to ensure the
+    directives match with both methods of fetching.
+
+diff --git a/ext/opcache/tests/get_configuration_matches_ini.phpt b/ext/opcache/tests/get_configuration_matches_ini.phpt
+new file mode 100644
+index 0000000000..7ddcb73136
+--- /dev/null
++++ b/ext/opcache/tests/get_configuration_matches_ini.phpt
+@@ -0,0 +1,16 @@
++--TEST--
++Test that the directives listed with `opcache_get_configuration` include all those from the ini settings.
++--INI--
++opcache.enable=1
++opcache.enable_cli=1
++--SKIPIF--
++<?php require_once('skipif.inc'); ?>
++--FILE--
++<?php
++$opts = opcache_get_configuration()['directives'];
++$inis = ini_get_all('zend opcache');
++var_dump(array_diff_key($inis, $opts));
++?>
++--EXPECT--
++array(0) {
++}
+\ No newline at end of file
+diff --git a/ext/opcache/zend_accelerator_module.c b/ext/opcache/zend_accelerator_module.c
+index ef80ffa630..8d48e60e9a 100644
+--- a/ext/opcache/zend_accelerator_module.c
++++ b/ext/opcache/zend_accelerator_module.c
+@@ -727,6 +727,8 @@ static ZEND_FUNCTION(opcache_get_configuration)
+ 
+ #ifndef ZEND_WIN32
+ 	add_assoc_string(&directives, "opcache.lockfile_path",          STRING_NOT_NULL(ZCG(accel_directives).lockfile_path));
++#else
++	add_assoc_string(&directives, "opcache.mmap_base",              STRING_NOT_NULL(ZCG(accel_directives).mmap_base));
+ #endif
+ 
+ #ifdef HAVE_OPCACHE_FILE_CACHE
+@@ -734,6 +736,15 @@ static ZEND_FUNCTION(opcache_get_configuration)
+ 	add_assoc_bool(&directives,   "opcache.file_cache_only",               ZCG(accel_directives).file_cache_only);
+ 	add_assoc_bool(&directives,   "opcache.file_cache_consistency_checks", ZCG(accel_directives).file_cache_consistency_checks);
+ #endif
++#if ENABLE_FILE_CACHE_FALLBACK
++	add_assoc_bool(&directives,   "opcache.file_cache_fallback",           ZCG(accel_directives).file_cache_fallback);
++#endif
++
++	add_assoc_long(&directives,   "opcache.file_update_protection",  ZCG(accel_directives).file_update_protection);
++	add_assoc_string(&directives, "opcache.restrict_api",            STRING_NOT_NULL(ZCG(accel_directives).restrict_api));
++#ifdef HAVE_HUGE_CODE_PAGES
++	add_assoc_bool(&directives,   "opcache.huge_code_pages",         ZCG(accel_directives).huge_code_pages);
++#endif
+ 
+ 	add_assoc_zval(return_value, "directives", &directives);
+ 

@@ -1,0 +1,97 @@
+commit 6eb83a63e1833f0991af4ccccc5533269c8af96c
+Author: Ignace Nyamagana Butera <nyamsprod@gmail.com>
+Date:   Tue Feb 26 21:21:46 2019 +0100
+
+    Fixed bug #75113: Added DatePeriod::getRecurrences() method.
+
+diff --git a/ext/date/php_date.c b/ext/date/php_date.c
+index 5cc3f794cd..f6f0c6468a 100644
+--- a/ext/date/php_date.c
++++ b/ext/date/php_date.c
+@@ -543,6 +543,7 @@ const zend_function_entry date_funcs_period[] = {
+ 	PHP_ME(DatePeriod,                getStartDate,                NULL, ZEND_ACC_PUBLIC)
+ 	PHP_ME(DatePeriod,                getEndDate,                  NULL, ZEND_ACC_PUBLIC)
+ 	PHP_ME(DatePeriod,                getDateInterval,             NULL, ZEND_ACC_PUBLIC)
++	PHP_ME(DatePeriod,                getRecurrences,              NULL, ZEND_ACC_PUBLIC)
+ 	PHP_FE_END
+ };
+ 
+@@ -4736,6 +4737,28 @@ PHP_METHOD(DatePeriod, getDateInterval)
+ }
+ /* }}} */
+ 
++/* {{{ proto int DatePeriod::getRecurrences()
++   Get recurrences.
++*/
++PHP_METHOD(DatePeriod, getRecurrences)
++{
++        php_period_obj   *dpobj;
++        php_date_obj     *dateobj;
++
++        if (zend_parse_parameters_none() == FAILURE) {
++                return;
++        }
++
++        dpobj = Z_PHPPERIOD_P(getThis());
++
++        if (0 == dpobj->recurrences - dpobj->include_start_date) {
++                return;
++        }
++
++        RETURN_LONG(dpobj->recurrences - dpobj->include_start_date);
++}
++/* }}} */
++
+ static int check_id_allowed(char *id, zend_long what) /* {{{ */
+ {
+ 	if (what & PHP_DATE_TIMEZONE_GROUP_AFRICA     && strncasecmp(id, "Africa/",      7) == 0) return 1;
+diff --git a/ext/date/php_date.h b/ext/date/php_date.h
+index 56837705b2..8abfa5f464 100644
+--- a/ext/date/php_date.h
++++ b/ext/date/php_date.h
+@@ -112,6 +112,7 @@ PHP_METHOD(DatePeriod, __set_state);
+ PHP_METHOD(DatePeriod, getStartDate);
+ PHP_METHOD(DatePeriod, getEndDate);
+ PHP_METHOD(DatePeriod, getDateInterval);
++PHP_METHOD(DatePeriod, getRecurrences);
+ 
+ /* Options and Configuration */
+ PHP_FUNCTION(date_default_timezone_set);
+diff --git a/ext/date/tests/DatePeriod_getter.phpt b/ext/date/tests/DatePeriod_getter.phpt
+index 22006d1ae8..58f93b7cdd 100644
+--- a/ext/date/tests/DatePeriod_getter.phpt
++++ b/ext/date/tests/DatePeriod_getter.phpt
+@@ -8,6 +8,7 @@ $start = new DateTime('2000-01-01 00:00:00', new DateTimeZone('Europe/Berlin'));
+ $end   = new DateTime('2000-01-31 00:00:00', new DateTimeZone('UTC'));
+ $interval = new DateInterval('P1D');
+ $period   = new DatePeriod($start, $interval, $end);
++$recurrences = 4;
+ 
+ var_dump($period->getStartDate()->format('Y-m-d H:i:s'));
+ var_dump($period->getStartDate()->getTimeZone()->getName());
+@@ -16,6 +17,17 @@ var_dump($period->getEndDate()->format('Y-m-d H:i:s'));
+ var_dump($period->getEndDate()->getTimeZone()->getName());
+ 
+ var_dump($period->getDateInterval()->format('%R%y-%m-%d-%h-%i-%s'));
++var_dump($period->getRecurrences());
++
++$periodWithRecurrences = new DatePeriod($start, $interval, $recurrences);
++
++var_dump($periodWithRecurrences->getRecurrences());
++var_dump($periodWithRecurrences->getEndDate());
++
++$periodWithRecurrencesWithoutStart = new DatePeriod($start, $interval, $recurrences, DatePeriod::EXCLUDE_START_DATE);
++
++var_dump($periodWithRecurrences->getRecurrences());
++
+ ?>
+ --EXPECTF--
+ string(19) "2000-01-01 00:00:00"
+@@ -23,3 +35,7 @@ string(13) "Europe/Berlin"
+ string(19) "2000-01-31 00:00:00"
+ string(3) "UTC"
+ string(12) "+0-0-1-0-0-0"
++NULL
++int(4)
++NULL
++int(4)

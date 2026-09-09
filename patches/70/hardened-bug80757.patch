@@ -1,0 +1,18 @@
+commit 3ec37a74a27261193155228081ec1bf6df35868e
+Author: Felipe Pena <felipe@php.net>
+Date:   Wed Feb 24 18:17:27 2021 +0000
+
+    Fix bug #80757 (Exit code is 0 when could not open file)
+
+diff --git a/sapi/phpdbg/phpdbg_prompt.c b/sapi/phpdbg/phpdbg_prompt.c
+index 24155a7860..6b0de5c021 100644
+--- a/sapi/phpdbg/phpdbg_prompt.c
++++ b/sapi/phpdbg/phpdbg_prompt.c
+@@ -773,6 +773,7 @@ PHPDBG_COMMAND(run) /* {{{ */
+ 		if (!PHPDBG_G(ops)) {
+ 			if (phpdbg_compile() == FAILURE) {
+ 				phpdbg_error("compile", "type=\"compilefailure\" context=\"%s\"", "Failed to compile %s, cannot run", PHPDBG_G(exec));
++				EG(exit_status) = FAILURE;
+ 				goto out;
+ 			}
+ 		}

@@ -1,0 +1,53 @@
+commit 1fa26eccbaec3dc6ce645db144f08f46b63c1d59
+Author: Christoph M. Becker <cmbecker69@gmx.de>
+Date:   Mon Jul 26 14:12:02 2021 +0200
+
+    Fix #81294: Segfault when removing a filter
+    
+    We need to call the proper method.
+    
+    Closes GH-7308.
+
+diff --git a/ext/standard/tests/filters/bug81294.phpt b/ext/standard/tests/filters/bug81294.phpt
+new file mode 100644
+index 0000000000..195d17b6c8
+--- /dev/null
++++ b/ext/standard/tests/filters/bug81294.phpt
+@@ -0,0 +1,24 @@
++--TEST--
++Bug #81294 (Segfault when removing a filter)
++--SKIPIF--
++<?php
++if (!extension_loaded('zlib')) die("skip zlib extension not available");
++?>
++--FILE--
++<?php
++$f = fopen(__DIR__ . "/bug81294.txt", "wb+");
++$flt1 = stream_filter_append($f, "zlib.deflate", STREAM_FILTER_WRITE);
++$flt2 = stream_filter_append($f, "string.rot13", STREAM_FILTER_WRITE);
++fwrite($f, "test");
++stream_filter_remove($flt1);
++fwrite($f, "test");
++stream_filter_remove($flt2);
++rewind($f);
++var_dump(urlencode(fread($f, 1024)));
++?>
++--CLEAN--
++<?php
++@unlink(__DIR__ . "/bug81294.txt");
++?>
++--EXPECT--
++string(16) "%2BV-.%01%00grfg"
+diff --git a/main/streams/filter.c b/main/streams/filter.c
+index f536b92a02..a86b6b16d7 100644
+--- a/main/streams/filter.c
++++ b/main/streams/filter.c
+@@ -418,7 +418,7 @@ PHPAPI int _php_stream_filter_flush(php_stream_filter *filter, int finish)
+ 	for(current = filter; current; current = current->next) {
+ 		php_stream_filter_status_t status;
+ 
+-		status = filter->fops->filter(stream, current, inp, outp, NULL, flags);
++		status = current->fops->filter(stream, current, inp, outp, NULL, flags);
+ 		if (status == PSFS_FEED_ME) {
+ 			/* We've flushed the data far enough */
+ 			return SUCCESS;

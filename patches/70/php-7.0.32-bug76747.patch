@@ -1,0 +1,63 @@
+commit 8c92442b4988a07f683439401da8372af0eba2b3
+Author: Xinchen Hui <laruence@gmail.com>
+Date:   Thu Aug 16 13:56:20 2018 +0800
+
+    Fixed bug #76747 (Opcache treats path containing "test.pharma.tld" as a phar file)
+
+diff --git a/NEWS b/NEWS
+index 6d84a8d..4e36b1e 100644
+--- a/NEWS
++++ b/NEWS
+@@ -19,6 +19,10 @@ PHP                                                                        NEWS
+   . Fixed bug #76704 (mb_detect_order return value varies based on argument
+     type). (cmb)
+ 
++- Opcache:
++  . Fixed bug #76747 (Opcache treats path containing "test.pharma.tld" as a phar
++    file). (Laruence)
++
+ - phpdbg:
+   . Fixed bug #76595 (phpdbg man page contains outdated information).
+     (Kevin Abel)
+diff --git a/ext/opcache/ZendAccelerator.c b/ext/opcache/ZendAccelerator.c
+index d983d4c..4e0a261 100644
+--- a/ext/opcache/ZendAccelerator.c
++++ b/ext/opcache/ZendAccelerator.c
+@@ -1216,6 +1216,13 @@ static void zend_accel_add_key(char *key, unsigned int key_length, zend_accel_ha
+ 	}
+ }
+ 
++static zend_always_inline zend_bool is_phar_file(zend_string *filename)
++{
++	return filename && ZSTR_LEN(filename) >= sizeof(".phar") &&
++		!memcmp(ZSTR_VAL(filename) + ZSTR_LEN(filename) - (sizeof(".phar")-1), ".phar", sizeof(".phar")-1) &&
++		!strstr(ZSTR_VAL(filename), "://");
++}
++
+ #ifdef HAVE_OPCACHE_FILE_CACHE
+ static zend_persistent_script *store_script_in_file_cache(zend_persistent_script *new_persistent_script)
+ {
+@@ -1240,10 +1247,7 @@ static zend_persistent_script *store_script_in_file_cache(zend_persistent_script
+ 
+ 	zend_shared_alloc_destroy_xlat_table();
+ 
+-	new_persistent_script->is_phar =
+-		new_persistent_script->full_path &&
+-		strstr(ZSTR_VAL(new_persistent_script->full_path), ".phar") &&
+-		!strstr(ZSTR_VAL(new_persistent_script->full_path), "://");
++	new_persistent_script->is_phar = is_phar_file(new_persistent_script->full_path);
+ 
+ 	/* Consistency check */
+ 	if ((char*)new_persistent_script->mem + new_persistent_script->size != (char*)ZCG(mem)) {
+@@ -1359,10 +1363,7 @@ static zend_persistent_script *cache_script_in_shared_memory(zend_persistent_scr
+ 
+ 	zend_shared_alloc_destroy_xlat_table();
+ 
+-	new_persistent_script->is_phar =
+-		new_persistent_script->full_path &&
+-		strstr(ZSTR_VAL(new_persistent_script->full_path), ".phar") &&
+-		!strstr(ZSTR_VAL(new_persistent_script->full_path), "://");
++	new_persistent_script->is_phar = is_phar_file(new_persistent_script->full_path);
+ 
+ 	/* Consistency check */
+ 	if ((char*)new_persistent_script->mem + new_persistent_script->size != (char*)ZCG(mem)) {
