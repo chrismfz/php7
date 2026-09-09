@@ -1,0 +1,20 @@
+# This repo is the BUILDER + patch series + ionCube loaders — NOT a PHP source
+# tree. The PHP source is fetched (pristine php.net tarball) at build time, so
+# ignore anything a build might drop here, but keep the tracked artifacts.
+
+# Downloaded source tarballs / build scratch (if ever run inside the checkout)
+*.tar.gz
+*.tar.xz
+*.tar.bz2
+*.tgz
+php-*/
+build/
+*.rej
+*.orig
+
+# Editor / OS junk
+*~
+.#*
+*.swp
+.idea/
+.DS_Store

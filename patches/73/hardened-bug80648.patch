@@ -1,0 +1,43 @@
+commit 6adfb8c9621578c7ebb84091695d6cdc65cc0634
+Author: Christoph M. Becker <cmbecker69@gmx.de>
+Date:   Wed Jan 20 15:24:47 2021 +0100
+
+    Fix #80648: Fix for bug 79296 should be based on runtime version
+    
+    Instead of checking for actually affected libzip versions, we now always
+    `ZIP_TRUNCATE` empty files unless `ZIP_RDONLY` is set.
+    
+    Closes GH-6625.
+
+
+diff --git a/ext/zip/php_zip.c b/ext/zip/php_zip.c
+index 883b6f6d40..21182068d1 100644
+--- a/ext/zip/php_zip.c
++++ b/ext/zip/php_zip.c
+@@ -1473,20 +1473,21 @@ static ZIPARCHIVE_METHOD(open)
+ 		ze_obj->filename = NULL;
+ 	}
+ 
+-#if LIBZIP_VERSION_MAJOR > 1 || LIBZIP_VERSION_MAJOR == 1 && LIBZIP_VERSION_MINOR >= 6
+-	/* reduce BC break introduce in libzip 1.6.0
+-	   "Do not accept empty files as valid zip archives any longer" */
+-
+ 	/* open for write without option to empty the archive */
++#ifdef ZIP_RDONLY
+ 	if ((flags & (ZIP_TRUNCATE | ZIP_RDONLY)) == 0) {
++#else
++	if ((flags & ZIP_TRUNCATE) == 0) {
++#endif
+ 		zend_stat_t st;
+ 
+ 		/* exists and is empty */
+ 		if (VCWD_STAT(resolved_path, &st) == 0 && st.st_size == 0) {
++			/* reduce BC break introduced in libzip 1.6.0
++			   "Do not accept empty files as valid zip archives any longer" */
+ 			flags |= ZIP_TRUNCATE;
+ 		}
+ 	}
+-#endif
+ 
+ 	intern = zip_open(resolved_path, flags, &err);
+ 	if (!intern || err) {

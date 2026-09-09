@@ -1,0 +1,9 @@
+# Force-kept patches: basenames the importer's classify() would otherwise skip,
+# but which THIS build needs. The importer never second-guesses this list.
+
+# OpenSSL 3.0.x build compatibility. classify() files it as build/packaging (not
+# a CVE/bug/hardened backport), but we build against a private OpenSSL 3.5, and
+# pristine 7.3 does NOT compile against OpenSSL 3 without it — RSA_SSLV23_PADDING
+# and friends were removed in 3.0. CloudLinux maintains this (they build ea-php73
+# on OpenSSL-3 distros too); 3.5 is API-compatible with 3.0 for these symbols.
+php-7.3.33-fix-for-openssl-3.0.x.patch

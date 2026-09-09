@@ -1,0 +1,180 @@
+commit 6dd85f83f78fbafc4a90b264e577a31b59323314
+Author: Nikita Popov <nikita.ppv@gmail.com>
+Date:   Mon Feb 22 09:33:23 2021 +0100
+
+    Fixed bug #80781
+    
+    zend_find_array_dim_slow() may throw, make sure to handle this.
+    This backports the code we already use for this on PHP-8.0,
+    and also backports an exception check that makes this easier to
+    catch.
+
+
+diff --git a/Zend/tests/bug80781.phpt b/Zend/tests/bug80781.phpt
+new file mode 100644
+index 0000000000..3e8715dc0c
+--- /dev/null
++++ b/Zend/tests/bug80781.phpt
+@@ -0,0 +1,32 @@
++--TEST--
++Bug #80781: Error handler that throws ErrorException infinite loop
++--FILE--
++<?php
++
++function handle(int $severity, string $message, string $file, int $line): bool {
++	if((error_reporting() & $severity) !== 0) {
++		throw new \ErrorException($message, 0, $severity, $file, $line);
++	}
++
++	return true; // stfu operator
++}
++
++set_error_handler('handle');
++
++function getPlugin(string $plugin) : bool{
++	return false;
++}
++
++$data = [];
++$array = [];
++if (isset($array[$data]) or getPlugin($data)) {
++
++}
++
++?>
++--EXPECTF--
++Fatal error: Uncaught ErrorException: Illegal offset type in isset or empty in %s:%d
++Stack trace:
++#0 %s(%d): handle(2, 'Illegal offset ...', %s, %d, Array)
++#1 {main}
++  thrown in %s on line %d
+diff --git a/Zend/zend_execute.c b/Zend/zend_execute.c
+index f58b1131ba..90ffa5afb6 100644
+--- a/Zend/zend_execute.c
++++ b/Zend/zend_execute.c
+@@ -4555,6 +4555,7 @@ static zend_always_inline zend_execute_data *_zend_vm_stack_push_call_frame(uint
+ 	if (check_exception) { \
+ 		OPLINE = EX(opline) + (skip); \
+ 	} else { \
++		ZEND_ASSERT(!EG(exception)); \
+ 		OPLINE = opline + (skip); \
+ 	} \
+ 	ZEND_VM_CONTINUE()
+diff --git a/Zend/zend_vm_def.h b/Zend/zend_vm_def.h
+index bc7550f4ed..d693f4f359 100644
+--- a/Zend/zend_vm_def.h
++++ b/Zend/zend_vm_def.h
+@@ -6937,6 +6937,10 @@ ZEND_VM_C_LABEL(num_index_prop):
+ 			ZEND_VM_C_GOTO(isset_again);
+ 		} else {
+ 			value = zend_find_array_dim_slow(ht, offset EXECUTE_DATA_CC);
++			if (UNEXPECTED(EG(exception))) {
++				result = 0;
++				ZEND_VM_C_GOTO(isset_dim_obj_exit);
++			}
+ 		}
+ 
+ 		if (!(opline->extended_value & ZEND_ISEMPTY)) {
+diff --git a/Zend/zend_vm_execute.h b/Zend/zend_vm_execute.h
+index 0e65367eb5..dc49bcd434 100644
+--- a/Zend/zend_vm_execute.h
++++ b/Zend/zend_vm_execute.h
+@@ -6302,6 +6302,10 @@ num_index_prop:
+ 			goto isset_again;
+ 		} else {
+ 			value = zend_find_array_dim_slow(ht, offset EXECUTE_DATA_CC);
++			if (UNEXPECTED(EG(exception))) {
++				result = 0;
++				goto isset_dim_obj_exit;
++			}
+ 		}
+ 
+ 		if (!(opline->extended_value & ZEND_ISEMPTY)) {
+@@ -8496,6 +8500,10 @@ num_index_prop:
+ 			goto isset_again;
+ 		} else {
+ 			value = zend_find_array_dim_slow(ht, offset EXECUTE_DATA_CC);
++			if (UNEXPECTED(EG(exception))) {
++				result = 0;
++				goto isset_dim_obj_exit;
++			}
+ 		}
+ 
+ 		if (!(opline->extended_value & ZEND_ISEMPTY)) {
+@@ -10949,6 +10957,10 @@ num_index_prop:
+ 			goto isset_again;
+ 		} else {
+ 			value = zend_find_array_dim_slow(ht, offset EXECUTE_DATA_CC);
++			if (UNEXPECTED(EG(exception))) {
++				result = 0;
++				goto isset_dim_obj_exit;
++			}
+ 		}
+ 
+ 		if (!(opline->extended_value & ZEND_ISEMPTY)) {
+@@ -14985,6 +14997,10 @@ num_index_prop:
+ 			goto isset_again;
+ 		} else {
+ 			value = zend_find_array_dim_slow(ht, offset EXECUTE_DATA_CC);
++			if (UNEXPECTED(EG(exception))) {
++				result = 0;
++				goto isset_dim_obj_exit;
++			}
+ 		}
+ 
+ 		if (!(opline->extended_value & ZEND_ISEMPTY)) {
+@@ -16402,6 +16418,10 @@ num_index_prop:
+ 			goto isset_again;
+ 		} else {
+ 			value = zend_find_array_dim_slow(ht, offset EXECUTE_DATA_CC);
++			if (UNEXPECTED(EG(exception))) {
++				result = 0;
++				goto isset_dim_obj_exit;
++			}
+ 		}
+ 
+ 		if (!(opline->extended_value & ZEND_ISEMPTY)) {
+@@ -17689,6 +17709,10 @@ num_index_prop:
+ 			goto isset_again;
+ 		} else {
+ 			value = zend_find_array_dim_slow(ht, offset EXECUTE_DATA_CC);
++			if (UNEXPECTED(EG(exception))) {
++				result = 0;
++				goto isset_dim_obj_exit;
++			}
+ 		}
+ 
+ 		if (!(opline->extended_value & ZEND_ISEMPTY)) {
+@@ -41505,6 +41529,10 @@ num_index_prop:
+ 			goto isset_again;
+ 		} else {
+ 			value = zend_find_array_dim_slow(ht, offset EXECUTE_DATA_CC);
++			if (UNEXPECTED(EG(exception))) {
++				result = 0;
++				goto isset_dim_obj_exit;
++			}
+ 		}
+ 
+ 		if (!(opline->extended_value & ZEND_ISEMPTY)) {
+@@ -44950,6 +44978,10 @@ num_index_prop:
+ 			goto isset_again;
+ 		} else {
+ 			value = zend_find_array_dim_slow(ht, offset EXECUTE_DATA_CC);
++			if (UNEXPECTED(EG(exception))) {
++				result = 0;
++				goto isset_dim_obj_exit;
++			}
+ 		}
+ 
+ 		if (!(opline->extended_value & ZEND_ISEMPTY)) {
+@@ -50123,6 +50155,10 @@ num_index_prop:
+ 			goto isset_again;
+ 		} else {
+ 			value = zend_find_array_dim_slow(ht, offset EXECUTE_DATA_CC);
++			if (UNEXPECTED(EG(exception))) {
++				result = 0;
++				goto isset_dim_obj_exit;
++			}
+ 		}
+ 
+ 		if (!(opline->extended_value & ZEND_ISEMPTY)) {
