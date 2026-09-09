@@ -1,0 +1,55 @@
+commit 84b615284218736f4fe2450a5f43ef61f2a78901
+Author: Christoph M. Becker <cmbecker69@gmx.de>
+Date:   Wed Feb 17 14:05:28 2021 +0100
+
+    Fix #80763: msgfmt_format() does not accept DateTime references
+    
+    `intl_zval_to_millis()` needs to cater to references.
+    
+    Closes GH-6707.
+
+
+diff --git a/ext/intl/common/common_date.cpp b/ext/intl/common/common_date.cpp
+index b3e8a30f68..207b81aa6f 100644
+--- a/ext/intl/common/common_date.cpp
++++ b/ext/intl/common/common_date.cpp
+@@ -175,6 +175,7 @@ U_CFUNC double intl_zval_to_millis(zval *z, intl_error *err, const char *func)
+ 		return ZEND_NAN;
+ 	}
+ 
++try_again:
+ 	switch (Z_TYPE_P(z)) {
+ 	case IS_STRING:
+ 		type = is_numeric_string(Z_STRVAL_P(z), Z_STRLEN_P(z), &lv, &rv, 0);
+@@ -227,6 +228,9 @@ U_CFUNC double intl_zval_to_millis(zval *z, intl_error *err, const char *func)
+ 			efree(message);
+ 		}
+ 		break;
++	case IS_REFERENCE:
++		z = Z_REFVAL_P(z);
++		goto try_again;
+ 	default:
+ 		spprintf(&message, 0, "%s: invalid PHP type for date", func);
+ 		intl_errors_set(err, U_ILLEGAL_ARGUMENT_ERROR,
+diff --git a/ext/intl/tests/bug80763.phpt b/ext/intl/tests/bug80763.phpt
+new file mode 100644
+index 0000000000..bd5aeb45c6
+--- /dev/null
++++ b/ext/intl/tests/bug80763.phpt
+@@ -0,0 +1,16 @@
++--TEST--
++Bug #80763 (msgfmt_format() does not accept DateTime references)
++--SKIPIF--
++<?php
++if (!extension_loaded('intl')) die('skip intl extension not available');
++?>
++--FILE--
++<?php
++$today = new DateTime('2021-02-17 12:00:00');
++$formatter = new \MessageFormatter('en_US', 'Today is {today, date, full}.');
++$params = ['today' => $today];
++array_walk($params, fn() => 1);
++var_dump($formatter->format($params));
++?>
++--EXPECT--
++string(38) "Today is Wednesday, February 17, 2021."

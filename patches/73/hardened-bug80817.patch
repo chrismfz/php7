@@ -1,0 +1,25 @@
+commit f448b0e6dd3a1bd3a009c2e94c539a038f834c4d
+Author: Christoph M. Becker <cmbecker69@gmx.de>
+Date:   Mon Mar 1 18:14:26 2021 +0100
+
+    Fix #80817: dba_popen() may cause segfault during RSHUTDOWN
+    
+    We need to close persistent streams with the proper flag.
+
+
+diff --git a/ext/dba/dba.c b/ext/dba/dba.c
+index 952993582b..9581a57148 100644
+--- a/ext/dba/dba.c
++++ b/ext/dba/dba.c
+@@ -972,9 +972,9 @@ restart:
+ 				zend_bool close_both;
+ 
+ 				close_both = (info->fp != info->lock.fp);
+-				php_stream_close(info->lock.fp);
++				php_stream_free(info->lock.fp, persistent ? PHP_STREAM_FREE_CLOSE_PERSISTENT : PHP_STREAM_FREE_CLOSE);
+ 				if (close_both) {
+-					php_stream_close(info->fp);
++					php_stream_free(info->fp, persistent ? PHP_STREAM_FREE_CLOSE_PERSISTENT : PHP_STREAM_FREE_CLOSE);
+ 				}
+ 				info->fp = NULL;
+ 				info->lock.fp = NULL;
