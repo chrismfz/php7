@@ -85,14 +85,27 @@ curl -fSLO https://repo.cloudlinux.com/cloudlinux/EA4/8.1/updates/src/ea-php73-p
 git diff patches/73/
 ```
 
+The private **OpenSSL** is pinned the same way (`build.sh`: `OPENSSL_VERSION` +
+`OPENSSL_SHA256`, currently the latest **3.5 LTS**) — deliberately not "latest at
+build time": pinning keeps the build reproducible, lets the tarball be
+sha256-verified before it touches the crypto path, and keeps php53/php56/php7
+agreeing on the ONE shared `/opt/ngm/php/openssl-3.5` prefix. To learn when a newer
+3.5 LTS ships, run **`./tools/check-deps.py`** (detection only; `--bump` rewrites
+the two pin lines for review). curl and libmcrypt are sha-pinned too.
+
 ## Status
 
 | minor | default release | patches | notes |
 |------|-----------------|---------|-------|
-| 7.3  | 7.3.33          | ✅ 76 series + 1 local (35 CVEs) | **built & verified** (OpenSSL 3.5.7, ionCube, OPcache); sha256 pinned |
-| 7.2  | 7.2.34          | (pending) | no `ext/mcrypt` |
-| 7.1  | 7.1.33          | (pending) | `ext/mcrypt` present (deprecated) |
-| 7.0  | 7.0.33          | (pending) | `ext/mcrypt` present |
+| 7.3  | 7.3.33          | ✅ 76 series + 1 local (35 CVEs) | **built & verified** (ionCube, OPcache); sha256 pinned |
+| 7.2  | 7.2.34          | ✅ 82 series + 1 local (35 CVEs) | **built & verified**; sha256 pinned; no `ext/mcrypt` |
+| 7.1  | 7.1.33          | ✅ 127 series + 1 local (39 CVEs) | **built & verified**; sha256 pinned; `ext/mcrypt` present (deprecated) |
+| 7.0  | 7.0.33          | ✅ 240 series + 1 local (45 CVEs) | **built & verified**; sha256 pinned; `ext/mcrypt` present |
+
+All four built & verified on AlmaLinux 10 against the private **OpenSSL 3.5.8**
+(latest 3.5 LTS), GnuTLS libcurl 8.21.0, ionCube 15.5 and Zend OPcache; every
+dependency tarball (OpenSSL / curl / libmcrypt) and every PHP release is now
+**sha256-pinned and verified at build time**.
 
 **7.3 source:** from `ea-php73-php-7.3.33-15.el8.cloudlinux.16`. Of 110 applied
 CloudLinux patches, 76 are kept in the series and 1 (CVE-2017-9118) is rebased in
@@ -100,6 +113,19 @@ CloudLinux patches, 76 are kept in the series and 1 (CVE-2017-9118) is rebased i
 EA4 runtime + build-packaging glue. CloudLinux's `php-7.3.33-fix-for-openssl-3.0.x.patch`
 is force-kept (`patches-local/73/include`) — it is what lets 7.3 build against the
 private OpenSSL 3.5. **Every CVE in the series is covered.**
+
+**7.2 source:** from `ea-php72-php-7.2.34-12.el8.cloudlinux.9`. 82 of 113 applied
+patches are kept in the series, plus the same rebased CVE-2017-9118 in
+`patches-local/72/` and the same force-kept OpenSSL-3.0 fix. 35 CVEs; every CVE in
+the series is covered. Apply verified clean on a pristine 7.2.34 tree; host build
+pending.
+
+**7.1 source:** from `ea-php71-php-7.1.33-20.el8.cloudlinux.9` — 127 of 160 applied
+patches kept + rebased CVE-2017-9118 + force-kept OpenSSL-3.0 fix; 39 CVEs.
+**7.0 source:** from `ea-php70-php-7.0.33-29.el8.cloudlinux.9` — 240 of 274 applied
+patches kept + rebased CVE-2017-9118 + force-kept OpenSSL-3.0 fix (7.0 ships its
+own `php-7.0.33-...` copy); 45 CVEs. Both apply clean on their pristine trees; host
+build pending. 7.0/7.1 keep `ext/mcrypt` (private libmcrypt), removed in 7.2.
 
 ## Licence
 

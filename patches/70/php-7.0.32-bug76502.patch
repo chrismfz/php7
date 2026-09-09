@@ -1,0 +1,76 @@
+commit 701460ba84865be03df81265a6c6d76f40dd6b00
+Author: Nikita Popov <nikita.ppv@gmail.com>
+Date:   Sun Jun 24 22:26:45 2018 +0200
+
+    Fixed bug #76502
+
+diff --git a/NEWS b/NEWS
+index a9218df..1dab097 100644
+--- a/NEWS
++++ b/NEWS
+@@ -2,6 +2,10 @@ PHP                                                                        NEWS
+ |||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||
+ ?? ??? ????, PHP 7.1.20
+ 
++- Core:
++  . Fixed bug #76502 (Chain of mixed exceptions and errors does not serialize
++    properly). (Nikita)
++
+ - Date:
+   . Fixed bug #76462 (Undefined property: DateInterval::$f). (Anatol)
+ 
+diff --git a/Zend/tests/bug76502.phpt b/Zend/tests/bug76502.phpt
+new file mode 100644
+index 0000000..caacc99
+--- /dev/null
++++ b/Zend/tests/bug76502.phpt
+@@ -0,0 +1,36 @@
++--TEST--
++Bug #76502: Chain of mixed exceptions and errors does not serialize properly
++--FILE--
++<?php
++
++$examples = [
++    "Exception(Exception())" => new Exception("outer", 0,  new Exception("inner")),
++    "Error(Error())"         => new Error("outer", 0, new Error("inner")),
++    "Error(Exception())"     => new Error("outer", 0, new Exception("inner")),
++    "Exception(Error())"     => new Exception("outer", 0, new Error("inner"))
++];
++
++foreach ($examples as $name => $example) {
++    $processed = unserialize(serialize($example));
++    $processedPrev = $processed->getPrevious();
++    echo "---- $name ----\n";
++    echo "before: ", get_class($example), ".previous == ",
++        get_class($example->getPrevious()), "\n";
++    echo "after : ", get_class($processed), ".previous == ",
++        $processedPrev ? get_class($processedPrev) : "null", "\n";
++}
++
++?>
++--EXPECT--
++---- Exception(Exception()) ----
++before: Exception.previous == Exception
++after : Exception.previous == Exception
++---- Error(Error()) ----
++before: Error.previous == Error
++after : Error.previous == Error
++---- Error(Exception()) ----
++before: Error.previous == Exception
++after : Error.previous == Exception
++---- Exception(Error()) ----
++before: Exception.previous == Error
++after : Exception.previous == Error
+diff --git a/Zend/zend_exceptions.c b/Zend/zend_exceptions.c
+index caa0d71..a1d5312 100644
+--- a/Zend/zend_exceptions.c
++++ b/Zend/zend_exceptions.c
+@@ -323,7 +323,7 @@ ZEND_METHOD(exception, __wakeup)
+ 	CHECK_EXC_TYPE(ZEND_STR_TRACE,    IS_ARRAY);
+ 	pvalue = zend_read_property(i_get_exception_base(object), object, "previous", sizeof("previous")-1, 1, &value);
+ 	if (pvalue && Z_TYPE_P(pvalue) != IS_NULL && (Z_TYPE_P(pvalue) != IS_OBJECT ||
+-			!instanceof_function(Z_OBJCE_P(pvalue), i_get_exception_base(object)) ||
++			!instanceof_function(Z_OBJCE_P(pvalue), zend_ce_throwable) ||
+ 			pvalue == object)) {
+ 		zend_unset_property(i_get_exception_base(object), object, "previous", sizeof("previous")-1);
+ 	}

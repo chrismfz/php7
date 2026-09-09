@@ -1,0 +1,15 @@
+diff --git a/ext/curl/interface.c b/ext/curl/interface.c
+index a52e1bb..0ad2f78 100644
+--- a/ext/curl/interface.c
++++ b/ext/curl/interface.c
+@@ -2108,9 +2108,7 @@ PHP_FUNCTION(curl_copy_handle)
+ 	dupch->cp = cp;
+ 
+ 	_php_setup_easy_copy_handlers(dupch, ch);
+-
+-	Z_ADDREF_P(zid);
+-
++	
+ 	ZVAL_RES(return_value, zend_register_resource(dupch, le_curl));
+ 	dupch->res = Z_RES_P(return_value);
+ }

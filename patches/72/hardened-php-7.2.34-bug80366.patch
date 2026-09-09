@@ -1,0 +1,37 @@
+Index: NEWS
+IDEA additional info:
+Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
+<+>UTF-8
+===================================================================
+diff --git a/NEWS b/NEWS
+--- a/NEWS	(revision 649911773706b604599d9653334249bbf043aee4)
++++ b/NEWS	(revision dd2d6c68f5116c713a99fecb933fd3bd39e2f153)
+@@ -785,6 +785,9 @@
+   . Fixed bug #76965 (INI_SCANNER_RAW doesn't strip trailing whitespace).
+     (Pierrick)
+ 
++- Standard:
++  . Fixed bug #80366 (Return Value of zend_fstat() not Checked). (sagpant, cmb)
++
+ - Tidy:
+   . Fixed bug #77027 (tidy::getOptDoc() not available on Windows). (cmb)
+ 
+Index: ext/standard/iptc.c
+IDEA additional info:
+Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
+<+>UTF-8
+===================================================================
+diff --git a/ext/standard/iptc.c b/ext/standard/iptc.c
+--- a/ext/standard/iptc.c	(revision 649911773706b604599d9653334249bbf043aee4)
++++ b/ext/standard/iptc.c	(revision dd2d6c68f5116c713a99fecb933fd3bd39e2f153)
+@@ -219,7 +219,9 @@
+ 	}
+ 
+ 	if (spool < 2) {
+-		zend_fstat(fileno(fp), &sb);
++		if (zend_fstat(fileno(fp), &sb) != 0) {
++			RETURN_FALSE;
++		}
+ 
+ 		spoolbuf = zend_string_safe_alloc(1, iptcdata_len + sizeof(psheader) + 1024 + 1, sb.st_size, 0);
+ 		poi = (unsigned char*)ZSTR_VAL(spoolbuf);

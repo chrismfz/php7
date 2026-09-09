@@ -1,0 +1,50 @@
+diff -aruN php-7.2.34.orig/ext/pdo_firebird/firebird_statement.c php-7.2.34/ext/pdo_firebird/firebird_statement.c
+--- php-7.2.34.orig/ext/pdo_firebird/firebird_statement.c	2020-09-30 01:15:54.000000000 -0400
++++ php-7.2.34/ext/pdo_firebird/firebird_statement.c	2021-07-16 06:24:55.887755214 -0400
+@@ -294,6 +294,11 @@
+ 		unsigned short seg_len;
+ 		ISC_STATUS stat;
+ 
++		/* prevent overflow */
++		if (*len == ZEND_ULONG_MAX) {
++			result = 0;
++			goto fetch_blob_end;
++		}
+ 		*ptr = S->fetch_buf[colno] = erealloc(S->fetch_buf[colno], *len+1);
+ 
+ 		for (cur_len = stat = 0; (!stat || stat == isc_segment) && cur_len < *len; cur_len += seg_len) {
+diff -aruN php-7.2.34.orig/ext/pdo_firebird/tests/bug_76452.phpt php-7.2.34/ext/pdo_firebird/tests/bug_76452.phpt
+--- php-7.2.34.orig/ext/pdo_firebird/tests/bug_76452.phpt	1969-12-31 19:00:00.000000000 -0500
++++ php-7.2.34/ext/pdo_firebird/tests/bug_76452.phpt	2021-07-16 06:25:29.467413392 -0400
+@@ -0,0 +1,31 @@
++--TEST--
++Bug ##76452 (Crash while parsing blob data in firebird_fetch_blob)
++--SKIPIF--
++<?php require('skipif.inc'); ?>
++--FILE--
++<?php
++require_once "payload_server.inc";
++
++$address = run_server(__DIR__ . "/bug_76452.data");
++
++// no need to change the credentials; we're running against a falke server
++$dsn = "firebird:dbname=inet://$address/test";
++$username = 'SYSDBA';
++$password = 'masterkey';
++
++$dbh = new PDO($dsn, $username, $password, [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION]);
++$query = $dbh->prepare("select * from test");
++$query->execute();
++var_dump($query->fetch());
++?>
++--EXPECT--
++array(4) {
++  ["AAA"]=>
++  string(4) "hihi"
++  [0]=>
++  string(4) "hihi"
++  ["BBBB"]=>
++  NULL
++  [1]=>
++  NULL
++}

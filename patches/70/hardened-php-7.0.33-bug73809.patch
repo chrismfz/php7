@@ -1,0 +1,81 @@
+Index: NEWS
+IDEA additional info:
+Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
+<+>UTF-8
+===================================================================
+diff --git a/NEWS b/NEWS
+--- a/NEWS	(revision 661fc3630f9df378ea72df2d00067da515ba2757)
++++ b/NEWS	(revision b42a00aeb1d0af812934706d10d4f1b034fb67ba)
+@@ -862,6 +862,9 @@
+   . Fixed bug #73768 (Memory corruption when loading hostile phar). (Stas)
+   . Fixed bug #73764 (Crash while loading hostile phar archive). (Stas)
+ 
++- Phar:
++  . Fixed bug #73809 (Phar Zip parse crash - mmap fail). (cmb)
++
+ - Phpdbg:
+   . Fixed bug #73615 (phpdbg without option never load .phpdbginit at startup).
+     (Bob)
+Index: ext/phar/tests/bug73809.phpt
+IDEA additional info:
+Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
+<+>UTF-8
+===================================================================
+diff --git a/ext/phar/tests/bug73809.phpt b/ext/phar/tests/bug73809.phpt
+new file mode 100644
+--- /dev/null	(revision b42a00aeb1d0af812934706d10d4f1b034fb67ba)
++++ b/ext/phar/tests/bug73809.phpt	(revision b42a00aeb1d0af812934706d10d4f1b034fb67ba)
+@@ -0,0 +1,30 @@
++--TEST--
++Bug #73809 (Phar Zip parse crash - mmap fail)
++--SKIPIF--
++<?php
++if (!extension_loaded('phar')) die('skip phar extension not available');
++if (!extension_loaded('zip')) die('skip zip extension not available');
++?>
++--FILE--
++<?php
++// create the ZIP to be tested
++$zip = new ZipArchive;
++$zip->open(__DIR__ . '/73809.zip', ZipArchive::CREATE);
++$zip->addFromString('73809.txt', 'yada yada');
++$zip->addFromString('.phar/signature.bin', str_repeat('*', 64 * 1024 + 1));
++$zip->setCompressionName('.phar/signature.bin', ZipArchive::CM_STORE);
++var_dump($zip->close());
++
++try {
++    $phar = new PharData(__DIR__ . '/73809.zip');
++} catch (Exception $ex) {
++    echo $ex->getMessage(), PHP_EOL;
++}
++?>
++--CLEAN--
++<?php
++@unlink(__DIR__ . '/73809.zip');
++?>
++--EXPECTF--
++bool(true)
++phar error: signatures larger than 64 KiB are not supported in zip-based phar "%s"
+Index: ext/phar/zip.c
+IDEA additional info:
+Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
+<+>UTF-8
+===================================================================
+diff --git a/ext/phar/zip.c b/ext/phar/zip.c
+--- a/ext/phar/zip.c	(revision 661fc3630f9df378ea72df2d00067da515ba2757)
++++ b/ext/phar/zip.c	(revision b42a00aeb1d0af812934706d10d4f1b034fb67ba)
+@@ -398,8 +398,13 @@
+ 			zend_off_t now;
+ 			char *sig;
+ 
+-			now = php_stream_tell(fp);
+ 			pefree(entry.filename, entry.is_persistent);
++
++            if (entry.uncompressed_filesize > 0x10000) {
++                PHAR_ZIP_FAIL("signatures larger than 64 KiB are not supported");
++            }
++
++            now = php_stream_tell(fp);
+ 			sigfile = php_stream_fopen_tmpfile();
+ 			if (!sigfile) {
+ 				PHAR_ZIP_FAIL("couldn't open temporary file");

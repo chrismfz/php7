@@ -1,0 +1,47 @@
+commit 64b10854643531bcf62a884aaea0bafc57e4f914
+Author: Nikita Popov <nikita.ppv@gmail.com>
+Date:   Mon Feb 15 15:33:42 2021 +0100
+
+    Fixed bug #80747
+    
+    If RSA key generation fails, actually report that failure.
+
+
+diff --git a/ext/openssl/openssl.c b/ext/openssl/openssl.c
+index 52d7dbf463..66f18516a4 100644
+--- a/ext/openssl/openssl.c
++++ b/ext/openssl/openssl.c
+@@ -4021,6 +4021,8 @@ static EVP_PKEY * php_openssl_generate_private_key(struct php_x509_request * req
+ 						PHP_OPENSSL_RAND_ADD_TIME();
+ 						if (rsaparam == NULL || !RSA_generate_key_ex(rsaparam, req->priv_key_bits, bne, NULL)) {
+ 							php_openssl_store_errors();
++							RSA_free(rsaparam);
++							rsaparam = NULL;
+ 						}
+ 						BN_free(bne);
+ 					}
+diff --git a/ext/openssl/tests/bug80747.phpt b/ext/openssl/tests/bug80747.phpt
+new file mode 100644
+index 0000000000..db83d0266f
+--- /dev/null
++++ b/ext/openssl/tests/bug80747.phpt
+@@ -0,0 +1,19 @@
++--TEST--
++Bug #80747: Providing RSA key size < 512 generates key that crash PHP
++--FILE--
++--SKIPIF--
++<?php
++if (!extension_loaded("openssl")) die("skip");
++?>
++--FILE--
++<?php
++
++$conf = array(
++    'config' => __DIR__ . DIRECTORY_SEPARATOR . 'openssl.cnf',
++    'private_key_bits' => 511,
++);
++var_dump(openssl_pkey_new($conf));
++
++?>
++--EXPECT--
++bool(false)

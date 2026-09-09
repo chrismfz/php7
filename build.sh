@@ -61,9 +61,9 @@ case "$PHP_MINOR" in 7.0|7.1) USE_MCRYPT=1 ;; esac
 # computed digest is printed, but is not enforced until a value is filled in
 # here (do that once, from a build you trust). A MISMATCH always aborts.
 declare -A PHP_SHA256=(
-  [7.0.33]=""
-  [7.1.33]=""
-  [7.2.34]=""
+  [7.0.33]="ab8c5be6e32b1f8d032909dedaaaa4bbb1a209e519abb01a52ce3914f9a13d96"
+  [7.1.33]="bd7c0a9bd5433289ee01fd440af3715309faf583f75832b64fe169c100d52968"
+  [7.2.34]="409e11bc6a2c18707dfc44bc61c820ddfd81e17481470f3405ee7822d8379903"
   [7.3.33]="166eaccde933381da9516a2b70ad0f447d7cec4b603d07b9a916032b215b90cc"
 )
 
@@ -72,12 +72,23 @@ PREFIX="${PREFIX:-${NGM_ROOT}/${PHP_SERIES}}"
 BUILD_ROOT="${BUILD_ROOT:-/usr/local/src/ngm-php7-build}"
 SRC_DIR="${BUILD_ROOT}/php-${PHP_RELEASE}"
 
-OPENSSL_VERSION="${OPENSSL_VERSION:-3.5.7}"
+OPENSSL_VERSION="${OPENSSL_VERSION:-3.5.8}"
 OPENSSL_PREFIX="${OPENSSL_PREFIX:-${NGM_ROOT}/openssl-3.5}"
 CURL_VERSION="${CURL_VERSION:-8.21.0}"
 CURL_PREFIX="${CURL_PREFIX:-${NGM_ROOT}/curl-gnutls}"
 MCRYPT_VERSION="${MCRYPT_VERSION:-2.5.8}"
 MCRYPT_PREFIX="${MCRYPT_PREFIX:-${NGM_ROOT}/libmcrypt}"
+
+# sha256 of the private build-dependency tarballs — same policy as PHP_SHA256:
+# non-empty enforces (mismatch aborts), empty warns with the computed digest.
+# OpenSSL tracks the latest 3.5.x LTS line; bump OPENSSL_VERSION + this together
+# (tools/check-deps.py reports when a newer 3.5.x LTS ships). The three legacy-PHP
+# repos share the /opt/ngm/php/openssl-3.5 prefix, so they MUST pin the same
+# OpenSSL — otherwise a build for one version rebuilds the shared prefix out from
+# under the others.
+OPENSSL_SHA256="${OPENSSL_SHA256:-a8f84a39918ec6415ce765d9b429d313ba97b8143169c172e734b9514464f5b2}"  # openssl-3.5.8.tar.gz
+CURL_SHA256="${CURL_SHA256:-aa1b66a70eace83dc624508745646c08ae561de512ab403adffb93ac87fc72e6}"        # curl-8.21.0.tar.xz
+MCRYPT_SHA256="${MCRYPT_SHA256:-e4eb6c074bbab168ac47b947c195ff8cef9d51a211cdd18ca9c9ef34d27a373e}"     # libmcrypt-2.5.8.tar.gz
 
 JOBS="${JOBS:-$(nproc 2>/dev/null || echo 2)}"
 FORCE="${FORCE:-0}"
@@ -111,6 +122,20 @@ trap on_error ERR
 
 need_root() {
   [ "$(id -u)" -eq 0 ] || die "run as root."
+}
+
+# check_sha256 <file> <expected> <label>: enforce when a digest is pinned (mismatch
+# aborts — a tampered/wrong crypto tarball must never reach the build), warn with
+# the computed digest when it is not, so a new version can be pinned from a trusted run.
+check_sha256() {
+  local file="$1" want="$2" label="$3" got
+  got="$(sha256sum "$file" | awk '{print $1}')"
+  if [ -n "$want" ]; then
+    [ "$got" = "$want" ] || die "${label} sha256 mismatch: got ${got}, expected ${want}."
+    log "verified ${label} sha256 ${got}"
+  else
+    warn "no pinned sha256 for ${label} — got ${got} (pin it once trusted)."
+  fi
 }
 
 fetch() {
@@ -221,6 +246,7 @@ build_openssl() {
   # Keep the matching source tarball even if OpenSSL is already installed;
   # provisioning openssl.cnf uses the source release's canonical config.
   fetch "https://www.openssl.org/source/openssl-${OPENSSL_VERSION}.tar.gz" "$tarball"
+  check_sha256 "$tarball" "$OPENSSL_SHA256" "openssl-${OPENSSL_VERSION}.tar.gz"
 
   libdir="$(find_libdir "$OPENSSL_PREFIX" 'libssl.so.3' || true)"
   if [ -n "$libdir" ] && [ -x "${OPENSSL_PREFIX}/bin/openssl" ] && [ "$FORCE_DEPS" != "1" ]; then
@@ -337,6 +363,7 @@ build_curl() {
 
   ca_bundle="$(find_ca_bundle)" || die "could not locate the system CA bundle."
   fetch "https://curl.se/download/curl-${CURL_VERSION}.tar.xz" "${BUILD_ROOT}/curl-${CURL_VERSION}.tar.xz"
+  check_sha256 "${BUILD_ROOT}/curl-${CURL_VERSION}.tar.xz" "$CURL_SHA256" "curl-${CURL_VERSION}.tar.xz"
   rm -rf "${BUILD_ROOT}/curl-${CURL_VERSION}"
   tar -xJf "${BUILD_ROOT}/curl-${CURL_VERSION}.tar.xz" -C "$BUILD_ROOT"
 
@@ -369,6 +396,7 @@ build_libmcrypt() {
   fetch \
     "https://sourceforge.net/projects/mcrypt/files/Libmcrypt/${MCRYPT_VERSION}/libmcrypt-${MCRYPT_VERSION}.tar.gz/download" \
     "${BUILD_ROOT}/libmcrypt-${MCRYPT_VERSION}.tar.gz"
+  check_sha256 "${BUILD_ROOT}/libmcrypt-${MCRYPT_VERSION}.tar.gz" "$MCRYPT_SHA256" "libmcrypt-${MCRYPT_VERSION}.tar.gz"
   rm -rf "${BUILD_ROOT}/libmcrypt-${MCRYPT_VERSION}"
   tar -xzf "${BUILD_ROOT}/libmcrypt-${MCRYPT_VERSION}.tar.gz" -C "$BUILD_ROOT"
 

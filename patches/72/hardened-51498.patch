@@ -1,0 +1,64 @@
+commit c565555f0372124ac62b7923038d689c69d9a0fe
+Author: Christoph M. Becker <cmbecker69@gmx.de>
+Date:   Mon Aug 2 11:05:57 2021 +0200
+
+    Fix #51498: imagefilledellipse does not work for large circles
+    
+    We backport the respective upstream fix[1].
+    
+    [1] <https://github.com/libgd/libgd/commit/ace7fd88dc7571b3aa182f6b2604292f8461a819>
+    
+    Closes GH-7329.
+
+diff --git a/ext/gd/libgd/gd.c b/ext/gd/libgd/gd.c
+index 9c23753008..7831254b91 100644
+--- a/ext/gd/libgd/gd.c
++++ b/ext/gd/libgd/gd.c
+@@ -1715,7 +1715,7 @@ void gdImageFilledArc (gdImagePtr im, int cx, int cy, int w, int h, int s, int e
+ void gdImageEllipse(gdImagePtr im, int mx, int my, int w, int h, int c)
+ {
+ 	int x=0,mx1=0,mx2=0,my1=0,my2=0;
+-	long aq,bq,dx,dy,r,rx,ry,a,b;
++	int64_t aq,bq,dx,dy,r,rx,ry,a,b;
+ 
+ 	a=w>>1;
+ 	b=h>>1;
+@@ -1754,7 +1754,7 @@ void gdImageEllipse(gdImagePtr im, int mx, int my, int w, int h, int c)
+ void gdImageFilledEllipse (gdImagePtr im, int mx, int my, int w, int h, int c)
+ {
+ 	int x=0,mx1=0,mx2=0,my1=0,my2=0;
+-	long aq,bq,dx,dy,r,rx,ry,a,b;
++	int64_t aq,bq,dx,dy,r,rx,ry,a,b;
+ 	int i;
+ 	int old_y2;
+ 
+diff --git a/ext/gd/tests/bug51498.phpt b/ext/gd/tests/bug51498.phpt
+new file mode 100644
+index 0000000000..87478ca7c0
+--- /dev/null
++++ b/ext/gd/tests/bug51498.phpt
+@@ -0,0 +1,20 @@
++--TEST--
++Bug #51498 (imagefilledellipse does not work for large circles)
++--SKIPIF--
++<?php
++if (!extension_loaded('gd')) die("skip gd extension not available");
++if (!GD_BUNDLED && version_compare(GD_VERSION, "2.3.0") < 0) {
++    die("skip test requires GD 2.3.0 or higher");
++}
++?>
++--FILE--
++<?php
++$img = imagecreatetruecolor(2200, 2200);
++$white = imagecolorallocate($img, 255, 255, 255);
++imagefilledellipse($img, 1100, 1100, 2200, 2200, $white);
++
++require_once __DIR__ . '/func.inc';
++test_image_equals_file(__DIR__ . '/bug51498_exp.png', $img);
++?>
++--EXPECT--
++The images are equal.
+diff --git a/ext/gd/tests/bug51498_exp.png b/ext/gd/tests/bug51498_exp.png
+new file mode 100644
+index 0000000000..db883907cd
+Binary files /dev/null and b/ext/gd/tests/bug51498_exp.png differ

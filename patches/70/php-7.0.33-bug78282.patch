@@ -1,0 +1,23 @@
+commit bf242d58e77d50d4d8fdaaaca7ede686ec4467c0
+Author: Christoph M. Becker <cmbecker69@gmx.de>
+Date:   Sat Jul 13 09:40:50 2019 +0200
+
+    Fix #78282: atime and mtime mismatch
+    
+    The fix for bug #78241 assumed that `time_t` would always be 64bit, but
+    actually is 32bit for x86.  We therefore enforce 64bit arithmetic to
+    avoid wrapping.
+
+diff --git a/TSRM/tsrm_win32.c b/TSRM/tsrm_win32.c
+index e510c61426..e16c946131 100644
+--- a/TSRM/tsrm_win32.c
++++ b/TSRM/tsrm_win32.c
+@@ -769,7 +769,7 @@ static zend_always_inline void UnixTimeToFileTime(time_t t, LPFILETIME pft) /* {
+ 	// Note that LONGLONG is a 64-bit value
+ 	LONGLONG ll;
+ 
+-	ll = t * 10000000 + 116444736000000000;
++	ll = t * 10000000LL + 116444736000000000LL;
+ 	pft->dwLowDateTime = (DWORD)ll;
+ 	pft->dwHighDateTime = ll >> 32;
+ }

@@ -1,0 +1,157 @@
+commit 358379be22c4e20f4942737e0e90422977355c63
+Author: Dmitry Stogov <dmitry@zend.com>
+Date:   Thu Aug 8 10:00:39 2019 +0300
+
+    Fixed bug #78379 (Cast to object confuses GC, causes crash)
+    included: 6b1cc1252e73e51e53194c8c65e3d2302bc83dca
+
+diff --git a/Zend/tests/bug78379.phpt b/Zend/tests/bug78379.phpt
+new file mode 100644
+index 0000000000..e48e9b7ca4
+--- /dev/null
++++ b/Zend/tests/bug78379.phpt
+@@ -0,0 +1,32 @@
++--TEST--
++Bug #78379 (Cast to object confuses GC, causes crash)
++--INI--
++opcache.enable=0
++--FILE--
++<?php
++class C {
++	public function __construct() {
++		$this->p = (object)["x" => [1]];
++	}
++}
++class E {
++}
++$e = new E;
++$e->f = new E;
++$e->f->e = $e;
++$e->a = new C;
++$e = null;
++gc_collect_cycles();
++var_dump(new C);
++?>
++--EXPECTF--
++object(C)#%d (1) {
++  ["p"]=>
++  object(stdClass)#%d (1) {
++    ["x"]=>
++    array(1) {
++      [0]=>
++      int(1)
++    }
++  }
++}
+diff --git a/Zend/zend_object_handlers.c b/Zend/zend_object_handlers.c
+index 1d4ee75a64..d0555c0031 100644
+--- a/Zend/zend_object_handlers.c
++++ b/Zend/zend_object_handlers.c
+@@ -138,6 +138,11 @@ ZEND_API HashTable *zend_std_get_gc(zval *object, zval **table, int *n) /* {{{ *
+ 		if (zobj->properties) {
+ 			*table = NULL;
+ 			*n = 0;
++			if (UNEXPECTED(GC_REFCOUNT(zobj->properties) > 1)
++			 && EXPECTED(!(GC_FLAGS(zobj->properties) & IS_ARRAY_IMMUTABLE))) {
++				GC_REFCOUNT(zobj->properties)--;
++				zobj->properties = zend_array_dup(zobj->properties);
++			}
+ 			return zobj->properties;
+ 		} else {
+ 			*table = zobj->properties_table;
+diff --git a/Zend/tests/bug78379_2.phpt b/Zend/tests/bug78379_2.phpt
+new file mode 100644
+index 0000000000..0a515a2b07
+--- /dev/null
++++ b/Zend/tests/bug78379_2.phpt
+@@ -0,0 +1,19 @@
++--TEST--
++Bug #78379.2 (Cast to object confuses GC, causes crash)
++--FILE--
++<?php
++class E {}
++function f() {
++	$e1 = new E;
++	$e2 = new E;
++	$a = ['e2' => $e2];
++	$e1->a = (object)$a;
++	$e2->e1 = $e1;
++	$e2->a = (object)$a;
++}
++f();
++gc_collect_cycles();
++echo "End\n";
++?>
++--EXPECT--
++End
+diff --git a/Zend/zend_gc.c b/Zend/zend_gc.c
+index 30ca4d0a2a..55f7271e3f 100644
+--- a/Zend/zend_gc.c
++++ b/Zend/zend_gc.c
+@@ -388,11 +388,14 @@ tail_call:
+ 			ZVAL_OBJ(&tmp, obj);
+ 			ht = get_gc(&tmp, &zv, &n);
+ 			end = zv + n;
+-			if (EXPECTED(!ht)) {
++			if (EXPECTED(!ht) || UNEXPECTED(GC_REF_GET_COLOR(ht) == GC_BLACK)) {
++				ht = NULL;
+ 				if (!n) return;
+ 				while (!Z_REFCOUNTED_P(--end)) {
+ 					if (zv == end) return;
+ 				}
++			} else {
++				GC_REF_SET_BLACK(ht);
+ 			}
+ 			while (zv != end) {
+ 				if (Z_REFCOUNTED_P(zv)) {
+@@ -498,11 +501,14 @@ tail_call:
+ 				ZVAL_OBJ(&tmp, obj);
+ 				ht = get_gc(&tmp, &zv, &n);
+ 				end = zv + n;
+-				if (EXPECTED(!ht)) {
++				if (EXPECTED(!ht) || UNEXPECTED(GC_REF_GET_COLOR(ht) == GC_GREY)) {
++					ht = NULL;
+ 					if (!n) return;
+ 					while (!Z_REFCOUNTED_P(--end)) {
+ 						if (zv == end) return;
+ 					}
++				} else {
++					GC_REF_SET_COLOR(ht, GC_GREY);
+ 				}
+ 				while (zv != end) {
+ 					if (Z_REFCOUNTED_P(zv)) {
+@@ -616,11 +622,14 @@ tail_call:
+ 					ZVAL_OBJ(&tmp, obj);
+ 					ht = get_gc(&tmp, &zv, &n);
+ 					end = zv + n;
+-					if (EXPECTED(!ht)) {
++					if (EXPECTED(!ht) || UNEXPECTED(GC_REF_GET_COLOR(ht) != GC_GREY)) {
++						ht = NULL;
+ 						if (!n) return;
+ 						while (!Z_REFCOUNTED_P(--end)) {
+ 							if (zv == end) return;
+ 						}
++					} else {
++						GC_REF_SET_COLOR(ht, GC_WHITE);
+ 					}
+ 					while (zv != end) {
+ 						if (Z_REFCOUNTED_P(zv)) {
+@@ -791,7 +800,8 @@ tail_call:
+ 				ZVAL_OBJ(&tmp, obj);
+ 				ht = get_gc(&tmp, &zv, &n);
+ 				end = zv + n;
+-				if (EXPECTED(!ht)) {
++				if (EXPECTED(!ht) || UNEXPECTED(GC_REF_GET_COLOR(ht) == GC_BLACK)) {
++					ht = NULL;
+ 					if (!n) return count;
+ 					while (!Z_REFCOUNTED_P(--end)) {
+ 						/* count non-refcounted for compatibility ??? */
+@@ -800,6 +810,8 @@ tail_call:
+ 						}
+ 						if (zv == end) return count;
+ 					}
++				} else {
++					GC_REF_SET_BLACK(ht);
+ 				}
+ 				while (zv != end) {
+ 					if (Z_REFCOUNTED_P(zv)) {

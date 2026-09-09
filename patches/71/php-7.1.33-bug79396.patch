@@ -1,0 +1,36 @@
+diff --git a/ext/date/php_date.c b/ext/date/php_date.c
+index 8f376df..2a9b878 100644
+--- a/ext/date/php_date.c
++++ b/ext/date/php_date.c
+@@ -3524,6 +3524,7 @@ static void php_date_time_set(zval *object, zend_long h, zend_long i, zend_long
+ 	dateobj->time->s = s;
+ 	dateobj->time->f = ((double) ms) / 1000000;
+ 	timelib_update_ts(dateobj->time, NULL);
++	timelib_update_from_sse(dateobj->time);
+ } /* }}} */
+ 
+ /* {{{ proto DateTime date_time_set(DateTime object, long hour, long minute[, long second[, long microseconds]])
+@@ -3573,6 +3574,7 @@ static void php_date_date_set(zval *object, zend_long y, zend_long m, zend_long
+ 	dateobj->time->m = m;
+ 	dateobj->time->d = d;
+ 	timelib_update_ts(dateobj->time, NULL);
++	timelib_update_from_sse(dateobj->time);
+ } /* }}} */
+ 
+ /* {{{ proto DateTime date_date_set(DateTime object, long year, long month, long day)
+@@ -3626,6 +3628,7 @@ static void php_date_isodate_set(zval *object, zend_long y, zend_long w, zend_lo
+ 	dateobj->time->have_relative = 1;
+ 
+ 	timelib_update_ts(dateobj->time, NULL);
++	timelib_update_from_sse(dateobj->time);
+ } /* }}} */
+ 
+ /* {{{ proto DateTime date_isodate_set(DateTime object, long year, long week[, long day])
+@@ -3673,6 +3676,7 @@ static void php_date_timestamp_set(zval *object, zend_long timestamp, zval *retu
+ 	DATE_CHECK_INITIALIZED(dateobj->time, DateTime);
+ 	timelib_unixtime2local(dateobj->time, (timelib_sll)timestamp);
+ 	timelib_update_ts(dateobj->time, NULL);
++	timelib_update_from_sse(dateobj->time);
+ 	php_date_set_time_fraction(dateobj->time, 0);
+ } /* }}} */
+ 

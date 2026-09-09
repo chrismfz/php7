@@ -1,0 +1,38 @@
+commit c7920aba3e1892accca7cd13ef5b8a8fbf48b5c2
+Author: Xinchen Hui <laruence@gmail.com>
+Date:   Thu Mar 14 16:46:04 2019 +0800
+
+    Fixed bug #77738 (Nullptr deref in zend_compile_expr)
+
+diff --git a/Zend/tests/bug77738.phpt b/Zend/tests/bug77738.phpt
+new file mode 100644
+index 0000000000..e3a453c405
+--- /dev/null
++++ b/Zend/tests/bug77738.phpt
+@@ -0,0 +1,8 @@
++--TEST--
++Bug #77738 (Nullptr deref in zend_compile_expr)
++--FILE--
++<?php
++__COMPILER_HALT_OFFSET__;
++; // <- important
++--EXPECTF--
++Warning: Use of undefined constant __COMPILER_HALT_OFFSET__ - assumed '__COMPILER_HALT_OFFSET__' %sbug77738.php on line %d
+diff --git a/Zend/zend_compile.c b/Zend/zend_compile.c
+index d0bece7228..a91dfeeecf 100644
+--- a/Zend/zend_compile.c
++++ b/Zend/zend_compile.c
+@@ -7673,11 +7673,11 @@ void zend_compile_const(znode *result, zend_ast *ast) /* {{{ */
+ 	if (zend_string_equals_literal(resolved_name, "__COMPILER_HALT_OFFSET__") || (name_ast->attr != ZEND_NAME_RELATIVE && zend_string_equals_literal(orig_name, "__COMPILER_HALT_OFFSET__"))) {
+ 		zend_ast *last = CG(ast);
+ 
+-		while (last->kind == ZEND_AST_STMT_LIST) {
++		while (last && last->kind == ZEND_AST_STMT_LIST) {
+ 			zend_ast_list *list = zend_ast_get_list(last);
+ 			last = list->child[list->children-1];
+ 		}
+-		if (last->kind == ZEND_AST_HALT_COMPILER) {
++		if (last && last->kind == ZEND_AST_HALT_COMPILER) {
+ 			result->op_type = IS_CONST;
+ 			ZVAL_LONG(&result->u.constant, Z_LVAL_P(zend_ast_get_zval(last->child[0])));
+ 			zend_string_release(resolved_name);

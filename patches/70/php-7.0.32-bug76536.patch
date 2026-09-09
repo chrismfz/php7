@@ -1,0 +1,60 @@
+commit 1f6b842af430b8cbba0fb1c38a2796ab399171c3
+Author: Xinchen Hui <laruence@gmail.com>
+Date:   Thu Jun 28 12:37:33 2018 +0800
+
+    Fixed bug #76536 (PHP crashes with core dump when throwing exception in error handler). (Laruence)
+
+diff --git a/NEWS b/NEWS
+index d5840d2..86fc110 100644
+--- a/NEWS
++++ b/NEWS
+@@ -18,6 +18,10 @@ PHP                                                                        NEWS
+ - phpdbg:
+   . Fix arginfo wrt. optional/required parameters. (cmb)
+ 
++- Reflection:
++  . Fixed bug #76536 (PHP crashes with core dump when throwing exception in
++    error handler). (Laruence)
++
+ - Standard:
+   . Fixed bug #76505 (array_merge_recursive() is duplicating sub-array keys).
+     (Laruence)
+diff --git a/ext/reflection/php_reflection.c b/ext/reflection/php_reflection.c
+index 7c6e20c..95b86e7 100644
+--- a/ext/reflection/php_reflection.c
++++ b/ext/reflection/php_reflection.c
+@@ -4617,7 +4617,7 @@ ZEND_METHOD(reflection_class, getConstants)
+ 	ZEND_HASH_FOREACH_VAL(&ce->constants_table, val) {
+ 		ZVAL_DEREF(val);
+ 		if (UNEXPECTED(zval_update_constant_ex(val, 1, ce) != SUCCESS)) {
+-			return;
++			RETURN_NULL();
+ 		}
+ 	} ZEND_HASH_FOREACH_END();
+ 	zend_hash_copy(Z_ARRVAL_P(return_value), &ce->constants_table, zval_add_ref_unref);
+diff --git a/ext/reflection/tests/bug76536.phpt b/ext/reflection/tests/bug76536.phpt
+new file mode 100644
+index 0000000..9f3b3fd
+--- /dev/null
++++ b/ext/reflection/tests/bug76536.phpt
+@@ -0,0 +1,20 @@
++--TEST--
++Bug #76536 (PHP crashes with core dump when throwing exception in error handler)
++--FILE--
++<?php
++class SomeConstants {const SOME_CONSTANT = SOME_NONSENSE;}
++
++function handleError() {throw new ErrorException();}
++
++set_error_handler('handleError');
++set_exception_handler('handleError');
++
++$r = new \ReflectionClass(SomeConstants::class);
++$r->getConstants();
++?>
++--EXPECTF--
++Fatal error: Uncaught ErrorException in %sbug76536.php:%d
++Stack trace:
++#0 [internal function]: handleError(Object(ErrorException))
++#1 {main}
++  thrown in %sbug76536.php on line %d

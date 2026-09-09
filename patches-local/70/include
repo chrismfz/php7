@@ -1,0 +1,4 @@
+# Force-kept: OpenSSL 3.0.x build compat. 7.0 ships its own copy of this fix
+# (php-7.0.33-..., distinct from the 7.1/7.2/7.3 php-7.3.33-... one). Needed to
+# compile ext/openssl against the private OpenSSL 3.5.
+php-7.0.33-fix-for-openssl-3.0.x.patch

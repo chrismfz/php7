@@ -1,0 +1,75 @@
+Index: NEWS
+IDEA additional info:
+Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
+<+>UTF-8
+===================================================================
+diff --git a/NEWS b/NEWS
+--- a/NEWS	(revision 652e718abbb7cf0e124250aa27c16f6d8e4a8b61)
++++ b/NEWS	(revision 3489e5d3b88f9b282a4764dc3fa18428c71e4ff0)
+@@ -186,6 +186,8 @@
+ 
+ - Standard:
+   . Fixed bug #80366 (Return Value of zend_fstat() not Checked). (sagpant, cmb)
++  . Fixed bug #80411 (References to null-serialized object break serialize()).
++    (Nikita)
+ 
+ - Tidy:
+   . Fixed bug #77027 (tidy::getOptDoc() not available on Windows). (cmb)
+Index: ext/standard/tests/serialize/bug80411.phpt
+IDEA additional info:
+Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
+<+>UTF-8
+===================================================================
+diff --git a/ext/standard/tests/serialize/bug80411.phpt b/ext/standard/tests/serialize/bug80411.phpt
+new file mode 100644
+--- /dev/null	(revision 3489e5d3b88f9b282a4764dc3fa18428c71e4ff0)
++++ b/ext/standard/tests/serialize/bug80411.phpt	(revision 3489e5d3b88f9b282a4764dc3fa18428c71e4ff0)
+@@ -0,0 +1,31 @@
++--TEST--
++Bug #80411: References to null-serialized object break serialize()
++--FILE--
++<?php
++
++class UnSerializable implements Serializable
++{
++  public function serialize() {}
++  public function unserialize($serialized) {}
++}
++
++$unser = new UnSerializable();
++$arr = [$unser];
++$arr[1] = &$arr[0];
++$arr[2] = 'endcap';
++$arr[3] = &$arr[2];
++
++$data = serialize($arr);
++echo $data . PHP_EOL;
++$recovered = unserialize($data);
++var_export($recovered);
++
++?>
++--EXPECT--
++a:4:{i:0;N;i:1;N;i:2;s:6:"endcap";i:3;R:4;}
++array (
++  0 => NULL,
++  1 => NULL,
++  2 => 'endcap',
++  3 => 'endcap',
++)
+Index: ext/standard/var.c
+IDEA additional info:
+Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
+<+>UTF-8
+===================================================================
+diff --git a/ext/standard/var.c b/ext/standard/var.c
+--- a/ext/standard/var.c	(revision 652e718abbb7cf0e124250aa27c16f6d8e4a8b61)
++++ b/ext/standard/var.c	(revision 3489e5d3b88f9b282a4764dc3fa18428c71e4ff0)
+@@ -614,7 +614,7 @@
+ 
+ 	if (zv) {
+ 		/* References are only counted once, undo the data->n increment above */
+-		if (is_ref) {
++		if (is_ref && Z_LVAL_P(zv) != -1) {
+ 			data->n -= 1;
+ 		}
+ 

@@ -1,0 +1,86 @@
+commit c34c5234678a5898c1796983e9ca8faa293f3fe3
+Author: Nikita Popov <nikita.ppv@gmail.com>
+Date:   Thu Feb 11 16:12:06 2021 +0100
+
+    Fixed bug #80719
+
+
+diff --git a/ext/spl/spl_array.c b/ext/spl/spl_array.c
+index 5f70bfe7a0..d709ed99b9 100644
+--- a/ext/spl/spl_array.c
++++ b/ext/spl/spl_array.c
+@@ -1179,7 +1179,7 @@ SPL_METHOD(Array, __construct)
+ 	spl_array_object *intern;
+ 	zval *array;
+ 	zend_long ar_flags = 0;
+-	zend_class_entry *ce_get_iterator = spl_ce_Iterator;
++	zend_class_entry *ce_get_iterator = spl_ce_ArrayIterator;
+ 
+ 	if (ZEND_NUM_ARGS() == 0) {
+ 		return; /* nothing to do */
+@@ -1232,7 +1232,7 @@ SPL_METHOD(Array, setIteratorClass)
+ {
+ 	zval *object = ZEND_THIS;
+ 	spl_array_object *intern = Z_SPLARRAY_P(object);
+-	zend_class_entry * ce_get_iterator = spl_ce_Iterator;
++	zend_class_entry *ce_get_iterator = spl_ce_ArrayIterator;
+ 
+ 	ZEND_PARSE_PARAMETERS_START(1, 1)
+ 		Z_PARAM_CLASS(ce_get_iterator)
+diff --git a/ext/spl/tests/arrayObject___construct_error1.phpt b/ext/spl/tests/arrayObject___construct_error1.phpt
+index aaf38ac499..9c2edf4b21 100644
+--- a/ext/spl/tests/arrayObject___construct_error1.phpt
++++ b/ext/spl/tests/arrayObject___construct_error1.phpt
+@@ -20,6 +20,6 @@ try {
+ ?>
+ --EXPECT--
+ Bad iterator type:
+-ArrayObject::__construct() expects parameter 3 to be a class name derived from Iterator, 'Exception' given(6)
++ArrayObject::__construct() expects parameter 3 to be a class name derived from ArrayIterator, 'Exception' given(6)
+ Non-existent class:
+-ArrayObject::__construct() expects parameter 3 to be a class name derived from Iterator, 'nonExistentClassName' given(13)
++ArrayObject::__construct() expects parameter 3 to be a class name derived from ArrayIterator, 'nonExistentClassName' given(13)
+diff --git a/ext/spl/tests/arrayObject_setIteratorClass_error1.phpt b/ext/spl/tests/arrayObject_setIteratorClass_error1.phpt
+index 89efdb6a9f..f3c7e7f5da 100644
+--- a/ext/spl/tests/arrayObject_setIteratorClass_error1.phpt
++++ b/ext/spl/tests/arrayObject_setIteratorClass_error1.phpt
+@@ -43,14 +43,14 @@ try {
+ 
+ ?>
+ --EXPECTF--
+-Warning: ArrayObject::setIteratorClass() expects parameter 1 to be a class name derived from Iterator, 'nonExistentClass' given in %s on line 4
++Warning: ArrayObject::setIteratorClass() expects parameter 1 to be a class name derived from ArrayIterator, 'nonExistentClass' given in %s on line %d
+   a=>1
+   b=>2
+   c=>3
+ 
+-Warning: ArrayObject::setIteratorClass() expects parameter 1 to be a class name derived from Iterator, 'stdClass' given in %s on line 14
++Warning: ArrayObject::setIteratorClass() expects parameter 1 to be a class name derived from ArrayIterator, 'stdClass' given in %s on line %d
+   a=>1
+   b=>2
+   c=>3
+-string(113) "ArrayObject::__construct() expects parameter 3 to be a class name derived from Iterator, 'nonExistentClass' given"
+-string(105) "ArrayObject::__construct() expects parameter 3 to be a class name derived from Iterator, 'stdClass' given"
++string(118) "ArrayObject::__construct() expects parameter 3 to be a class name derived from ArrayIterator, 'nonExistentClass' given"
++string(110) "ArrayObject::__construct() expects parameter 3 to be a class name derived from ArrayIterator, 'stdClass' given"
+diff --git a/ext/spl/tests/bug80719.phpt b/ext/spl/tests/bug80719.phpt
+new file mode 100644
+index 0000000000..66d83fad91
+--- /dev/null
++++ b/ext/spl/tests/bug80719.phpt
+@@ -0,0 +1,15 @@
++--TEST--
++Bug #80719: Iterating after failed ArrayObject::setIteratorClass() causes Segmentation fault
++--FILE--
++<?php
++
++$array = new ArrayObject([42]);
++$array->setIteratorClass(FilterIterator::class);
++foreach ($array as $v) {
++    var_dump($v);
++}
++
++?>
++--EXPECTF--
++Warning: ArrayObject::setIteratorClass() expects parameter 1 to be a class name derived from ArrayIterator, 'FilterIterator' given in %s on line %d
++int(42)

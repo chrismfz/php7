@@ -1,0 +1,29 @@
+commit 8ce04df7e0108a10f7b782a28204e9384ab1129c
+Author: Christoph M. Becker <cmbecker69@gmx.de>
+Date:   Wed Oct 2 16:42:28 2019 +0200
+
+    Fix #78620: Out of memory error
+    
+    If the integer addition in `ZEND_MM_ALIGNED_SIZE_EX` overflows, the
+    macro evaluates to `0`, what we should catch early.
+
+diff --git a/Zend/zend_alloc.c b/Zend/zend_alloc.c
+index 3a43027..222f08f 100644
+--- a/Zend/zend_alloc.c
++++ b/Zend/zend_alloc.c
+@@ -1730,10 +1730,15 @@ static void *zend_mm_alloc_huge(zend_mm_heap *heap, size_t size ZEND_FILE_LINE_D
+ 	void *ptr;
+ 
+ #if ZEND_MM_LIMIT
++	if (UNEXPECTED(new_size == 0)) {
++		/* overflow in ZEND_MM_ALIGNED_SIZE_EX */
++		goto memory_limit_exhausted;
++	}
+ 	if (UNEXPECTED(heap->real_size + new_size > heap->limit)) {
+ 		if (zend_mm_gc(heap) && heap->real_size + new_size <= heap->limit) {
+ 			/* pass */
+ 		} else if (heap->overflow == 0) {
++memory_limit_exhausted:
+ #if ZEND_DEBUG
+ 			zend_mm_safe_error(heap, "Allowed memory size of %zu bytes exhausted at %s:%d (tried to allocate %zu bytes)", heap->limit, __zend_filename, __zend_lineno, size);
+ #else

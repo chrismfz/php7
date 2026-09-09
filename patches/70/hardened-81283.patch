@@ -1,0 +1,24 @@
+commit 387c0de98312d576868bf45e8c7b2d4f2ab3c738
+Author: Christoph M. Becker <cmbecker69@gmx.de>
+Date:   Fri Jul 23 12:43:03 2021 +0200
+
+    Fix #81283: shmop can't read beyond 2147483647 bytes
+    
+    `start`, `count` and `shmop->size` are `zend_long`, so we must not
+    restrict to `INT_MAX`.
+    
+    Closes GH-7301.
+
+diff --git a/ext/shmop/shmop.c b/ext/shmop/shmop.c
+index 07414f2bca..78f109df42 100644
+--- a/ext/shmop/shmop.c
++++ b/ext/shmop/shmop.c
+@@ -251,7 +251,7 @@ PHP_FUNCTION(shmop_read)
+ 		RETURN_FALSE;
+ 	}
+ 
+-	if (count < 0 || start > (INT_MAX - count) || start + count > shmop->size) {
++	if (count < 0 || start > (ZEND_LONG_MAX - count) || start + count > shmop->size) {
+ 		php_error_docref(NULL, E_WARNING, "count is out of range");
+ 		RETURN_FALSE;
+ 	}
