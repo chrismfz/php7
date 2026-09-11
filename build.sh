@@ -32,6 +32,8 @@
 #   RUNTIME_ONLY=1              only (re)provision runtime config + verify/test
 #   ENABLE_LEGACY_PROVIDER=0    disable the private OpenSSL legacy provider
 #   ENABLE_IONCUBE=0            skip the bundled ionCube loader
+#   ENABLE_SNUFFLEUPAGUS=1      build + install the Snuffleupagus hardening module (PHP 7.0+; off by default)
+#   SNUFFLEUPAGUS_VERSION=X.Y.Z Snuffleupagus git tag to build (default 0.13.0)
 #   PHP_LIBDIR_NAME=...         override the configure system library dir
 #   JOBS=N                      parallel make jobs
 
@@ -89,6 +91,9 @@ MCRYPT_PREFIX="${MCRYPT_PREFIX:-${NGM_ROOT}/libmcrypt}"
 OPENSSL_SHA256="${OPENSSL_SHA256:-a8f84a39918ec6415ce765d9b429d313ba97b8143169c172e734b9514464f5b2}"  # openssl-3.5.8.tar.gz
 CURL_SHA256="${CURL_SHA256:-aa1b66a70eace83dc624508745646c08ae561de512ab403adffb93ac87fc72e6}"        # curl-8.21.0.tar.xz
 MCRYPT_SHA256="${MCRYPT_SHA256:-e4eb6c074bbab168ac47b947c195ff8cef9d51a211cdd18ca9c9ef34d27a373e}"     # libmcrypt-2.5.8.tar.gz
+# Snuffleupagus source tarball digest — same policy as above (empty warns with
+# the computed digest; non-empty enforces, mismatch aborts). Pin per SNUFFLEUPAGUS_VERSION.
+SNUFFLEUPAGUS_SHA256="${SNUFFLEUPAGUS_SHA256:-}"                                                       # v0.13.0 GitHub tag archive
 
 JOBS="${JOBS:-$(nproc 2>/dev/null || echo 2)}"
 FORCE="${FORCE:-0}"
@@ -100,6 +105,18 @@ RUNTIME_ONLY="${RUNTIME_ONLY:-0}"
 APPLY_PATCHES="${APPLY_PATCHES:-1}"   # apply patches/<minor>/series; 0 = pristine build
 PHP_LIBDIR_NAME="${PHP_LIBDIR_NAME:-}"
 IONCUBE_LOADER="${REPO_DIR}/ioncube/ioncube_loader_lin_${PHP_SERIES}.so"
+
+# Snuffleupagus (jvoisin/snuffleupagus) — PHP 7.0+/8.x hardening module. OFF by
+# default: like the Remi/NGM policy, the module ships only WITH a rendered
+# ruleset, so a build enables it explicitly (ENABLE_SNUFFLEUPAGUS=1) and the
+# NGM/CFM manager renders the real .rules into SP_RULES_DIR. v0.13.0 fixes
+# CVE-2026-22034 (upload_validation ACE) — do not pin older on 7.4+/8.x; a very
+# old 7.0/7.1 may need an older tag if 0.13.0 fails to compile there, and the
+# build + verify() step is the gate that catches that.
+ENABLE_SNUFFLEUPAGUS="${ENABLE_SNUFFLEUPAGUS:-0}"
+SNUFFLEUPAGUS_VERSION="${SNUFFLEUPAGUS_VERSION:-0.13.0}"
+SNUFFLEUPAGUS_REPO="${SNUFFLEUPAGUS_REPO:-https://github.com/jvoisin/snuffleupagus}"
+SP_RULES_DIR="${SP_RULES_DIR:-${PREFIX}/etc/snuffleupagus.d}"
 
 FPM_USER="${FPM_USER:-nobody}"
 if getent group nogroup >/dev/null 2>&1; then
@@ -223,6 +240,10 @@ install_deps() {
       sqlite-devel zlib-devel gettext-devel libxcrypt-devel oniguruma-devel \
       libzip-devel \
       libpq-devel openldap-devel cyrus-sasl-devel libtidy-devel aspell-devel
+    if [ "$ENABLE_SNUFFLEUPAGUS" = "1" ]; then
+      log "installing Snuffleupagus (phpize) build dependencies"
+      dnf install -y autoconf automake libtool re2c
+    fi
   elif command -v apt-get >/dev/null 2>&1; then
     log "installing Debian build dependencies"
     export DEBIAN_FRONTEND=noninteractive
@@ -234,6 +255,10 @@ install_deps() {
       libxslt1-dev libgmp-dev libsqlite3-dev zlib1g-dev libgettextpo-dev \
       libcrypt-dev libpq-dev libldap2-dev libsasl2-dev libtidy-dev \
       libaspell-dev libonig-dev
+    if [ "$ENABLE_SNUFFLEUPAGUS" = "1" ]; then
+      log "installing Snuffleupagus (phpize) build dependencies"
+      apt-get install -y --no-install-recommends autoconf automake libtool re2c
+    fi
   else
     die "unsupported package manager; expected dnf or apt-get."
   fi
@@ -607,6 +632,48 @@ build_php() {
   popd >/dev/null
 }
 
+# ── Snuffleupagus — PHP 7.0+ hardening module (built from source) ─────────────
+# Remi packages it for EL (php84-php-snuffleupagus etc.) and Sury has NO package,
+# so for the source-built /opt/ngm/php runtimes (and any Debian/Sury build) we
+# compile it here against the just-built PHP via that PHP's own phpize/php-config.
+# SP is a plain PHP extension (no external libs). Gated behind ENABLE_SNUFFLEUPAGUS;
+# the loader ini + monitor-safe starter ruleset are written in
+# install_runtime_extensions(). PHP 5.x is NOT supported by SP and never reaches
+# here (this repo builds only 7.0-7.3).
+build_snuffleupagus() {
+  [ "$ENABLE_SNUFFLEUPAGUS" = "1" ] || { log "ENABLE_SNUFFLEUPAGUS=0 — skipping Snuffleupagus"; return; }
+
+  local phpize="${PREFIX}/bin/phpize" php_config="${PREFIX}/bin/php-config"
+  [ -x "$phpize" ] || die "phpize missing at ${phpize} — build PHP before Snuffleupagus."
+  [ -x "$php_config" ] || die "php-config missing at ${php_config}."
+
+  local ver="$SNUFFLEUPAGUS_VERSION"
+  local tarball="${BUILD_ROOT}/snuffleupagus-${ver}.tar.gz"
+  local srcroot="${BUILD_ROOT}/snuffleupagus-${ver}"
+
+  # GitHub tag archives are v-prefixed (e.g. v0.13.0). Override SNUFFLEUPAGUS_REPO
+  # or SNUFFLEUPAGUS_VERSION to change source/tag.
+  fetch "${SNUFFLEUPAGUS_REPO}/archive/refs/tags/v${ver}.tar.gz" "$tarball"
+  check_sha256 "$tarball" "$SNUFFLEUPAGUS_SHA256" "snuffleupagus-${ver}.tar.gz"
+  rm -rf "$srcroot"
+  tar -xzf "$tarball" -C "$BUILD_ROOT"
+  [ -f "${srcroot}/src/config.m4" ] || die "unexpected Snuffleupagus layout: ${srcroot}/src/config.m4 missing."
+
+  pushd "${srcroot}/src" >/dev/null
+    log "building Snuffleupagus ${ver} against PHP ${PHP_SERIES} (${php_config})"
+    "$phpize"
+    ./configure --enable-snuffleupagus --with-php-config="${php_config}"
+    make -j"$JOBS"
+  popd >/dev/null
+
+  local extension_dir="" so_built="${srcroot}/src/modules/snuffleupagus.so"
+  extension_dir="$("${php_config}" --extension-dir)"
+  [ -r "$so_built" ] || die "snuffleupagus.so was not produced at ${so_built}."
+  install -d -m 755 "$extension_dir"
+  install -m 755 "$so_built" "${extension_dir}/snuffleupagus.so"
+  log "installed snuffleupagus.so -> ${extension_dir}/snuffleupagus.so"
+}
+
 install_runtime_extensions() {
   local ioncube_dir="${PREFIX}/ioncube"
   local ioncube_target="${ioncube_dir}/ioncube_loader_lin_${PHP_SERIES}.so"
@@ -640,6 +707,40 @@ zend_extension=${opcache_so}
 EOF
   chmod 644 "$opcache_ini"
   log "enabled Zend OPcache"
+
+  # Snuffleupagus loader + monitor-safe starter ruleset. The module ships ONLY
+  # with a ruleset: this starter only sets a log sink so SP loads and enforces
+  # NOTHING; the NGM/CFM manager renders the real .rules into SP_RULES_DIR. A
+  # rules file that fails to parse aborts PHP startup, so verify() re-checks load.
+  local sp_ini="${PREFIX}/etc/conf.d/90-snuffleupagus.ini"
+  local sp_so="${extension_dir}/snuffleupagus.so"
+  if [ "$ENABLE_SNUFFLEUPAGUS" = "1" ]; then
+    if [ ! -r "$sp_so" ]; then
+      warn "ENABLE_SNUFFLEUPAGUS=1 but ${sp_so} missing — run a full build (not RUNTIME_ONLY=1) to compile it; not writing ${sp_ini}."
+      rm -f "$sp_ini"
+    else
+      install -d -m 755 "$SP_RULES_DIR"
+      if [ ! -f "${SP_RULES_DIR}/00-ngm-default.rules" ]; then
+        cat > "${SP_RULES_DIR}/00-ngm-default.rules" <<'RULES'
+; NGM default Snuffleupagus policy — MONITOR/placeholder only.
+; The real ruleset is rendered by the NGM/CFM manager. This file only sets a
+; log sink so the module loads cleanly and enforces NOTHING until real rules land.
+sp.log_media("syslog");
+RULES
+        chmod 640 "${SP_RULES_DIR}/00-ngm-default.rules"
+      fi
+      cat > "$sp_ini" <<EOF
+; Managed by build.sh. Snuffleupagus PHP hardening module (loads last).
+; Real rules render into ${SP_RULES_DIR} (NGM/CFM manager); monitor-first.
+extension=snuffleupagus.so
+sp.configuration_file=${SP_RULES_DIR}/*.rules
+EOF
+      chmod 644 "$sp_ini"
+      log "enabled Snuffleupagus (rules dir: ${SP_RULES_DIR})"
+    fi
+  else
+    rm -f "$sp_ini"
+  fi
 }
 
 verify() {
@@ -673,6 +774,12 @@ verify() {
   fi
   log "testing Zend OPcache through production PHP configuration"
   "$php_bin" -r 'if (!function_exists("opcache_get_status")) { fwrite(STDERR,"Zend OPcache is not active\n"); exit(1); }'
+
+  if [ "$ENABLE_SNUFFLEUPAGUS" = "1" ]; then
+    log "testing Snuffleupagus loads with its ruleset through production PHP configuration"
+    "$php_bin" -m 2>/dev/null | grep -Fxq snuffleupagus \
+      || die "Snuffleupagus enabled but not active under production config (missing .so, or a rules file that fails to load)."
+  fi
 
   curl_version="$("$php_bin" -n -r '$v=curl_version(); echo $v["version"];' 2>/dev/null)"
   curl_tls="$("$php_bin" -n -r '$v=curl_version(); echo $v["ssl_version"];' 2>/dev/null)"
@@ -777,6 +884,7 @@ main() {
   fetch_php_source
   apply_patches
   build_php
+  build_snuffleupagus
   install_runtime_extensions
   verify
   run_regression_tests
