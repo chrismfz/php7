@@ -33,7 +33,8 @@
 #   ENABLE_LEGACY_PROVIDER=0    disable the private OpenSSL legacy provider
 #   ENABLE_IONCUBE=0            skip the bundled ionCube loader
 #   ENABLE_SNUFFLEUPAGUS=1      build + install the Snuffleupagus hardening module (PHP 7.0+; off by default)
-#   SNUFFLEUPAGUS_VERSION=X.Y.Z Snuffleupagus git tag to build (default 0.13.0)
+#   SNUFFLEUPAGUS_VERSION=...   'latest' (default) auto-resolves the newest GitHub release each build;
+#                              set X.Y.Z to pin a specific git tag (reproducible + sha256-enforceable)
 #   PHP_LIBDIR_NAME=...         override the configure system library dir
 #   JOBS=N                      parallel make jobs
 
@@ -92,8 +93,10 @@ OPENSSL_SHA256="${OPENSSL_SHA256:-a8f84a39918ec6415ce765d9b429d313ba97b8143169c1
 CURL_SHA256="${CURL_SHA256:-aa1b66a70eace83dc624508745646c08ae561de512ab403adffb93ac87fc72e6}"        # curl-8.21.0.tar.xz
 MCRYPT_SHA256="${MCRYPT_SHA256:-e4eb6c074bbab168ac47b947c195ff8cef9d51a211cdd18ca9c9ef34d27a373e}"     # libmcrypt-2.5.8.tar.gz
 # Snuffleupagus source tarball digest — same policy as above (empty warns with
-# the computed digest; non-empty enforces, mismatch aborts). Pin per SNUFFLEUPAGUS_VERSION.
-SNUFFLEUPAGUS_SHA256="${SNUFFLEUPAGUS_SHA256:-}"                                                       # v0.13.0 GitHub tag archive
+# the computed digest; non-empty enforces, mismatch aborts). Meaningful only with a
+# pinned SNUFFLEUPAGUS_VERSION — with the default 'latest' the tag floats, so this stays
+# empty (warn-only): you cannot pin a checksum to a moving release.
+SNUFFLEUPAGUS_SHA256="${SNUFFLEUPAGUS_SHA256:-}"                                                       # set only when SNUFFLEUPAGUS_VERSION is pinned
 
 JOBS="${JOBS:-$(nproc 2>/dev/null || echo 2)}"
 FORCE="${FORCE:-0}"
@@ -109,12 +112,15 @@ IONCUBE_LOADER="${REPO_DIR}/ioncube/ioncube_loader_lin_${PHP_SERIES}.so"
 # Snuffleupagus (jvoisin/snuffleupagus) — PHP 7.0+/8.x hardening module. OFF by
 # default: like the Remi/NGM policy, the module ships only WITH a rendered
 # ruleset, so a build enables it explicitly (ENABLE_SNUFFLEUPAGUS=1) and the
-# NGM/CFM manager renders the real .rules into SP_RULES_DIR. v0.13.0 fixes
-# CVE-2026-22034 (upload_validation ACE) — do not pin older on 7.4+/8.x; a very
-# old 7.0/7.1 may need an older tag if 0.13.0 fails to compile there, and the
-# build + verify() step is the gate that catches that.
+# NGM/CFM manager renders the real .rules into SP_RULES_DIR. Version defaults to
+# 'latest' — build_snuffleupagus resolves the newest GitHub release at build time
+# so rebuilds pick up upstream security fixes automatically (e.g. the v0.13.0
+# upload_validation ACE fix). Trade-off: a floating tag can't be sha256-pinned, so
+# pin SNUFFLEUPAGUS_VERSION=X.Y.Z (+ SNUFFLEUPAGUS_SHA256) for reproducible builds.
+# A very old 7.0/7.1 may need an older tag if the latest fails to compile there;
+# the build + verify() step is the gate that catches that.
 ENABLE_SNUFFLEUPAGUS="${ENABLE_SNUFFLEUPAGUS:-0}"
-SNUFFLEUPAGUS_VERSION="${SNUFFLEUPAGUS_VERSION:-0.13.0}"
+SNUFFLEUPAGUS_VERSION="${SNUFFLEUPAGUS_VERSION:-latest}"
 SNUFFLEUPAGUS_REPO="${SNUFFLEUPAGUS_REPO:-https://github.com/jvoisin/snuffleupagus}"
 SP_RULES_DIR="${SP_RULES_DIR:-${PREFIX}/etc/snuffleupagus.d}"
 
@@ -648,10 +654,30 @@ build_snuffleupagus() {
   [ -x "$php_config" ] || die "php-config missing at ${php_config}."
 
   local ver="$SNUFFLEUPAGUS_VERSION"
+
+  # 'latest' (the default) resolves the newest published GitHub release at build
+  # time, so each build tracks upstream automatically. Resolved via the
+  # releases/latest HTTP redirect (302 -> .../releases/tag/vX.Y.Z): no GitHub API
+  # token, no rate-limit, no jq. Because the tag then floats, sha256 is warn-only
+  # here — pin SNUFFLEUPAGUS_VERSION=X.Y.Z (+ SNUFFLEUPAGUS_SHA256) for a
+  # reproducible, checksum-enforced build.
+  if [ "$ver" = "latest" ]; then
+    log "resolving latest Snuffleupagus release from ${SNUFFLEUPAGUS_REPO}/releases/latest"
+    local latest_url
+    latest_url="$(curl -fsSL -o /dev/null -w '%{url_effective}' "${SNUFFLEUPAGUS_REPO}/releases/latest")" \
+      || die "could not reach ${SNUFFLEUPAGUS_REPO}/releases/latest (network/proxy?); pin SNUFFLEUPAGUS_VERSION=X.Y.Z to build without resolving."
+    ver="${latest_url##*/tag/}"; ver="${ver#v}"
+    case "$ver" in
+      [0-9]*) : ;;
+      *) die "could not parse a version from latest-release URL '${latest_url}'; pin SNUFFLEUPAGUS_VERSION=X.Y.Z." ;;
+    esac
+    log "latest Snuffleupagus release resolves to v${ver}"
+  fi
+
   local tarball="${BUILD_ROOT}/snuffleupagus-${ver}.tar.gz"
   local srcroot="${BUILD_ROOT}/snuffleupagus-${ver}"
 
-  # GitHub tag archives are v-prefixed (e.g. v0.13.0). Override SNUFFLEUPAGUS_REPO
+  # GitHub tag archives are v-prefixed (e.g. v0.14.0). Override SNUFFLEUPAGUS_REPO
   # or SNUFFLEUPAGUS_VERSION to change source/tag.
   fetch "${SNUFFLEUPAGUS_REPO}/archive/refs/tags/v${ver}.tar.gz" "$tarball"
   check_sha256 "$tarball" "$SNUFFLEUPAGUS_SHA256" "snuffleupagus-${ver}.tar.gz"
